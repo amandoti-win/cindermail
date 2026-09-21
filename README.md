@@ -78,11 +78,13 @@ The Worker root serves a status page with running totals, also available as JSON
 
 Code layout and tests: [docs/architecture.md](docs/architecture.md). Every setting: [docs/configuration.md](docs/configuration.md).
 
-## Under consideration (contingent on demand)
+## Planned
 
-- Publicly hosted instance
+- Short ID for every address, so commands don't need the full string
 
-- Hosting as a service
+- Private hosting as a service
+
+- Webview for reading full HTML emails on the web
   
 ## AI disclosure
 
