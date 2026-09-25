@@ -82,8 +82,6 @@ Code layout and tests: [docs/architecture.md](docs/architecture.md). Every setti
 
 ## Planned
 
-- Short ID for every address, so commands don't need the full string
-
 - Private hosting as a service
 
 - Webview for reading full HTML emails on the web
