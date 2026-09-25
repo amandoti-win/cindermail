@@ -85,6 +85,10 @@ Code layout and tests: [docs/architecture.md](docs/architecture.md). Every setti
 - Private hosting as a service
 
 - Webview for reading full HTML emails on the web
+
+- Freemium public instance
+
+- Freemium API
   
 ## AI disclosure
 
