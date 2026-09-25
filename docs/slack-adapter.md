@@ -147,6 +147,8 @@ Every reply uses Slack's `ephemeral` response type: visible only to whoever ran 
 | `/cm-torch <address>` | Revokes an address. | 15 per 60s |
 | `/cm-remind [on\|off]` | Expiry reminder DMs. Blank shows the current setting. | 15 per 60s |
 
+`/cm-list` shows a short 5-digit id next to each address (`#48213`). `/cm-extend`, `/cm-note`, and `/cm-torch` all accept that id in place of `<address>`.
+
 Plain text after the command, no structured options: for `/cm-new` and `/cm-note`, a leading number is read as `expiry`; everything else is the note. For `/cm-extend`, the address comes first and an optional trailing number is the new expiry:
 
 ```

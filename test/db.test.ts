@@ -8,6 +8,7 @@ import {
   listActiveAddresses,
   revokeAddress,
 } from "../src/core/db.ts";
+import { resolveAddressIdentifier } from "../src/core/commands.ts";
 import { createDispatcher } from "../src/core/dispatch.ts";
 import { handleInboundEmail } from "../src/core/email.ts";
 import type { MailAdapter } from "../src/core/types.ts";
@@ -124,6 +125,44 @@ test("permanent addresses", async (t) => {
   });
 });
 
+test("short ids", async (t) => {
+  await t.test("every address gets a unique 5-digit id", async () => {
+    const { db } = testDb();
+    await createAddress(db, owner("u1"), "ex.com", DAY, false, null);
+    await createAddress(db, owner("u1"), "ex.com", DAY, false, null);
+    const [first, second] = await listActiveAddresses(db, owner("u1"));
+    assert.match(first?.short_id ?? "", /^\d{5}$/);
+    assert.match(second?.short_id ?? "", /^\d{5}$/);
+    assert.notEqual(first?.short_id, second?.short_id);
+  });
+
+  await t.test("resolves to the matching address, scoped to the owner", async () => {
+    const { db } = testDb();
+    const address = await createAddress(db, owner("u1"), "ex.com", DAY, false, null);
+    const [row] = await listActiveAddresses(db, owner("u1"));
+    const shortId = row?.short_id ?? "";
+
+    assert.equal(await resolveAddressIdentifier(db, owner("u1"), shortId), address);
+    assert.equal(await resolveAddressIdentifier(db, owner("someone-else"), shortId), null);
+  });
+
+  await t.test("anything that isn't 5 digits is passed through unchanged", async () => {
+    const { db } = testDb();
+    assert.equal(await resolveAddressIdentifier(db, owner("u1"), "abc123@ex.com"), "abc123@ex.com");
+    assert.equal(await resolveAddressIdentifier(db, owner("u1"), "1234"), "1234");
+    assert.equal(await resolveAddressIdentifier(db, owner("u1"), "123456"), "123456");
+  });
+
+  await t.test("a torched address's short id stops resolving", async () => {
+    const { db } = testDb();
+    const address = await createAddress(db, owner("u1"), "ex.com", DAY, false, null);
+    const [row] = await listActiveAddresses(db, owner("u1"));
+    const shortId = row?.short_id ?? "";
+    await revokeAddress(db, owner("u1"), address);
+    assert.equal(await resolveAddressIdentifier(db, owner("u1"), shortId), null);
+  });
+});
+
 test("inbound mail is dropped for anything not live", async (t) => {
   for (const [label, make] of [
     ["expired", async (db: Parameters<typeof createAddress>[0]) => createAddress(db, owner("u1"), "ex.com", -DAY, false, null)],
@@ -177,6 +216,7 @@ test("schema.sql matches the migration chain", () => {
     "0005_add_received_counter.sql",
     "0006_add_note.sql",
     "0007_add_expiry_reminders.sql",
+    "0008_add_short_id.sql",
   ]) {
     upgraded.exec(migrationFile(name));
   }

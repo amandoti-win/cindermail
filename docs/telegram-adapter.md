@@ -98,6 +98,8 @@ Plain text after the command, no structured options, everything is just typed as
 | `/torch <address>` | Revokes an address. | 15 per 60s |
 | `/remind [on\|off]` | Expiry reminder messages. Blank shows the current setting. | 15 per 60s |
 
+`/list` shows a short 5-digit id next to each address (`#48213`). `/extend`, `/note`, and `/torch` all accept that id in place of `<address>`.
+
 For `/new` and `/note`, a leading number is read as `expiry`; everything else is the note. For `/extend`, the address comes first and an optional trailing number is the new expiry:
 
 ```

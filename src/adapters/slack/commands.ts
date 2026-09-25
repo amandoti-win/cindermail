@@ -17,6 +17,7 @@ import {
   describeExpiry,
   MAX_NOTE_LENGTH,
   parseExpiry,
+  resolveAddressIdentifier,
 } from "../../core/commands.ts";
 
 const RATE_LIMIT_MESSAGE = "Slow down a moment, then try again.";
@@ -141,17 +142,22 @@ async function handleList(db: SqlExecutor, owner: OwnerRef, config: CommandConfi
   const lines = addresses.map((a) => {
     const when = a.permanent === 1 ? "permanent" : `expires ${new Date(a.expires_at * 1000).toISOString().slice(0, 10)}`;
     const label = a.note ? ` ${a.note} ` : " ";
-    return `${a.address}${label}(${when})`;
+    const id = a.short_id ? `#${a.short_id} ` : "";
+    return `${id}${a.address}${label}(${when})`;
   });
   return [`${quota}:`, ...lines].join("\n");
 }
 
 async function handleNote(db: SqlExecutor, owner: OwnerRef, remainder: string): Promise<string> {
   const nextSpace = remainder.indexOf(" ");
-  const address = (nextSpace === -1 ? remainder : remainder.slice(0, nextSpace)).trim().toLowerCase();
+  const addressOrId = (nextSpace === -1 ? remainder : remainder.slice(0, nextSpace)).trim().toLowerCase();
   const note = (nextSpace === -1 ? "" : remainder.slice(nextSpace + 1)).trim().slice(0, MAX_NOTE_LENGTH);
-  if (!address) {
+  if (!addressOrId) {
     return "Usage: /cm-note <address> [note]";
+  }
+  const address = await resolveAddressIdentifier(db, owner, addressOrId);
+  if (!address) {
+    return "Not found or not yours.";
   }
   const updated = await setAddressNote(db, owner, address, note);
   if (!updated) {
@@ -166,9 +172,13 @@ async function handleExtend(
   config: CommandConfig,
   remainder: string
 ): Promise<string> {
-  const { address, expiryDays } = splitAddressAndTrailingExpiry(remainder);
-  if (!address) {
+  const { address: addressOrId, expiryDays } = splitAddressAndTrailingExpiry(remainder);
+  if (!addressOrId) {
     return "Usage: /cm-extend <address> [expiry]";
+  }
+  const address = await resolveAddressIdentifier(db, owner, addressOrId);
+  if (!address) {
+    return "Not found or not yours.";
   }
 
   const expiry =
@@ -191,9 +201,13 @@ async function handleExtend(
 }
 
 async function handleTorch(db: SqlExecutor, owner: OwnerRef, remainder: string): Promise<string> {
-  const address = remainder.trim().toLowerCase();
-  if (!address) {
+  const addressOrId = remainder.trim().toLowerCase();
+  if (!addressOrId) {
     return "Usage: /cm-torch <address>";
+  }
+  const address = await resolveAddressIdentifier(db, owner, addressOrId);
+  if (!address) {
+    return "Not found or not yours.";
   }
   const updated = await revokeAddress(db, owner, address);
   if (!updated) {

@@ -13,6 +13,11 @@ CREATE TABLE addresses (
   -- Optional user-supplied label ("netflix signup"), shown next to the
   -- address in /list. NULL when none was given.
   note TEXT,
+  -- 5-digit id shown next to the address in /list, so /note, /extend, and
+  -- /torch can take this instead of the full address. Owner-scoped at lookup
+  -- time same as the address itself, so it's a typing convenience, not a
+  -- security boundary.
+  short_id TEXT,
   -- When an expiry reminder DM was sent, so a second cron run in the same
   -- window can't duplicate it. NULL means not yet warned; extendAddress
   -- resets it so an extended address warns again on its new expiry.
@@ -24,6 +29,7 @@ CREATE TABLE addresses (
   receiver_data TEXT
 );
 CREATE INDEX idx_addresses_owner ON addresses(owner_type, owner_id);
+CREATE UNIQUE INDEX idx_addresses_short_id ON addresses(short_id);
 
 CREATE TABLE rate_limits (
   owner_type TEXT NOT NULL,

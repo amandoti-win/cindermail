@@ -144,6 +144,35 @@ test("address input is normalised", async (t) => {
   });
 });
 
+test("short id in place of the full address", async (t) => {
+  await t.test("/list shows the short id next to each address", async () => {
+    const { db } = testDb();
+    await createAddress(db, owner("n"), "ex.com", DAY, false, null);
+    const listReply = replyText(await run(db, "n", "list"));
+    assert.match(listReply, /^\d+\/\d+ active addresses:\n#\d{5} `/);
+  });
+
+  await t.test("/torch accepts the short id instead of the address", async () => {
+    const { db } = testDb();
+    const address = await createAddress(db, owner("n"), "ex.com", DAY, false, null);
+    const listReply = replyText(await run(db, "n", "list"));
+    const shortId = listReply.match(/#(\d{5})/)?.[1] ?? "";
+
+    const reply = await run(db, "n", "torch", [{ name: "address", value: shortId }]);
+    assert.match(replyText(reply), new RegExp(`Torched \`${address}\``));
+  });
+
+  await t.test("someone else's short id resolves to nothing", async () => {
+    const { db } = testDb();
+    await createAddress(db, owner("owner-1"), "ex.com", DAY, false, null);
+    const listReply = replyText(await run(db, "owner-1", "list"));
+    const shortId = listReply.match(/#(\d{5})/)?.[1] ?? "";
+
+    const reply = await run(db, "owner-2", "torch", [{ name: "address", value: shortId }]);
+    assert.match(replyText(reply), /Not found/);
+  });
+});
+
 test("notes", async (t) => {
   await t.test("/new stores and echoes a note", async () => {
     const { db } = testDb();

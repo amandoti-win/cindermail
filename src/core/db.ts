@@ -33,6 +33,34 @@ export function randomAlphanumeric(length: number): string {
   return out;
 }
 
+// 5-digit id shown alongside the address in /list, so /note, /extend, and
+// /torch can take this instead of the full string. Not security-sensitive
+// the way the address itself is: every lookup by short_id is still scoped to
+// the invoking owner, so guessing one does nothing without also owning the
+// match, hence plain Math.random() rather than the rejection-sampling
+// machinery above.
+const SHORT_ID_MIN = 10000;
+const SHORT_ID_RANGE = 90000;
+const MAX_SHORT_ID_ATTEMPTS = 5;
+
+function randomShortId(): string {
+  return String(SHORT_ID_MIN + Math.floor(Math.random() * SHORT_ID_RANGE));
+}
+
+async function generateUniqueShortId(db: SqlExecutor): Promise<string> {
+  for (let attempt = 0; attempt < MAX_SHORT_ID_ATTEMPTS; attempt++) {
+    const shortId = randomShortId();
+    const existing = await db.first<{ short_id: string }>(
+      `SELECT short_id FROM addresses WHERE short_id = ?`,
+      shortId
+    );
+    if (!existing) {
+      return shortId;
+    }
+  }
+  throw new Error("failed to allocate a unique short id after several attempts");
+}
+
 export async function createAddress(
   db: SqlExecutor,
   owner: OwnerRef,
@@ -46,11 +74,13 @@ export async function createAddress(
 
   for (let attempt = 0; attempt < MAX_CREATE_ATTEMPTS; attempt++) {
     const address = `${randomAlphanumeric(LOCAL_PART_LENGTH)}@${domain}`;
+    const shortId = await generateUniqueShortId(db);
     const result = await db.run(
-      `INSERT INTO addresses (address, owner_type, owner_id, created_at, expires_at, revoked, permanent, note)
-       VALUES (?, ?, ?, ?, ?, 0, ?, ?)
+      `INSERT INTO addresses (address, short_id, owner_type, owner_id, created_at, expires_at, revoked, permanent, note)
+       VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)
        ON CONFLICT(address) DO NOTHING`,
       address,
+      shortId,
       owner.type,
       owner.id,
       now,
@@ -83,10 +113,12 @@ export async function registerAddress(
 ): Promise<void> {
   const now = Math.floor(Date.now() / 1000);
   const expiresAt = now + ttlSeconds;
+  const shortId = await generateUniqueShortId(db);
   await db.run(
-    `INSERT INTO addresses (address, owner_type, owner_id, created_at, expires_at, revoked, permanent, note, receiver_data)
-     VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)`,
+    `INSERT INTO addresses (address, short_id, owner_type, owner_id, created_at, expires_at, revoked, permanent, note, receiver_data)
+     VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
     address,
+    shortId,
     owner.type,
     owner.id,
     now,
@@ -119,6 +151,22 @@ export async function setAddressNote(
 
 export async function getAddress(db: SqlExecutor, address: string): Promise<AddressRow | null> {
   return db.first<AddressRow>(`SELECT * FROM addresses WHERE address = ?`, address);
+}
+
+// Scoped to the owner same as every other lookup by identifier, so trying
+// short ids that aren't yours behaves exactly like trying addresses that
+// aren't yours: "not found", never a hint that a match exists elsewhere.
+export async function getAddressByShortId(
+  db: SqlExecutor,
+  owner: OwnerRef,
+  shortId: string
+): Promise<AddressRow | null> {
+  return db.first<AddressRow>(
+    `SELECT * FROM addresses WHERE short_id = ? AND owner_type = ? AND owner_id = ? AND revoked = 0`,
+    shortId,
+    owner.type,
+    owner.id
+  );
 }
 
 export async function listActiveAddresses(db: SqlExecutor, owner: OwnerRef): Promise<AddressRow[]> {

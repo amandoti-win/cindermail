@@ -1,3 +1,4 @@
+import { getAddressByShortId } from "./db.ts";
 import type { SqlExecutor } from "./storage.ts";
 import type { OwnerRef } from "./types.ts";
 
@@ -55,3 +56,21 @@ export function describeExpiry(expiry: Expiry): string {
 }
 
 export const BAD_EXPIRY_MESSAGE = `\`expiry\` must be a whole number of days between 0 and ${MAX_EXPIRY_DAYS}. Use 0 for permanent.`;
+
+const SHORT_ID_PATTERN = /^\d{5}$/;
+
+// /note, /extend, and /torch all accept either the full address or its
+// short id, identical across every adapter. Anything that isn't exactly 5
+// digits is assumed to already be an address and passed through unchanged;
+// the db call it feeds into fails with the same "not found" either way.
+export async function resolveAddressIdentifier(
+  db: SqlExecutor,
+  owner: OwnerRef,
+  identifier: string
+): Promise<string | null> {
+  if (!SHORT_ID_PATTERN.test(identifier)) {
+    return identifier;
+  }
+  const row = await getAddressByShortId(db, owner, identifier);
+  return row?.address ?? null;
+}

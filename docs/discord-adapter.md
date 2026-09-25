@@ -100,6 +100,8 @@ Replies are ephemeral: only the person who ran the command sees them.
 | `/torch <address>` | Revokes an address. | 15 per 60s |
 | `/remind [enabled]` | Expiry reminder DMs. Blank shows the setting. | 15 per 60s |
 
+`/list` shows a short 5-digit id next to each address (`#48213`). `/extend`, `/note`, and `/torch` all accept that id in place of `<address>`.
+
 ## Expiry
 
 `expiry` is in **days** on both `/new` and `/extend`. `0` means permanent.

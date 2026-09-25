@@ -18,6 +18,7 @@ import {
   MAX_EXPIRY_DAYS,
   MAX_NOTE_LENGTH,
   parseExpiry,
+  resolveAddressIdentifier,
 } from "../../core/commands.ts";
 
 export type { CreateAddressFn } from "../../core/commands.ts";
@@ -173,9 +174,13 @@ async function handleNew(
   return ephemeralReply(`Your new disposable address: \`${address}\`${label}\n${describeExpiry(expiry)}`);
 }
 
-async function handleNote(db: SqlExecutor, owner: OwnerRef, address: string | undefined, note: string) {
-  if (!address) {
+async function handleNote(db: SqlExecutor, owner: OwnerRef, addressOrId: string | undefined, note: string) {
+  if (!addressOrId) {
     return ephemeralReply("Missing address.");
+  }
+  const address = await resolveAddressIdentifier(db, owner, addressOrId);
+  if (!address) {
+    return ephemeralReply("Not found or not yours.");
   }
   const trimmed = note.trim().slice(0, MAX_NOTE_LENGTH);
   const updated = await setAddressNote(db, owner, address, trimmed);
@@ -198,7 +203,8 @@ async function handleList(db: SqlExecutor, owner: OwnerRef, config: CommandConfi
     // Notes are user-supplied, so strip backticks to stop one from breaking
     // out of the code span and mangling the rest of the line.
     const label = a.note ? ` ${a.note.replaceAll("`", "")} ` : " ";
-    return `\`${a.address}\`${label}(${when})`;
+    const id = a.short_id ? `#${a.short_id} ` : "";
+    return `${id}\`${a.address}\`${label}(${when})`;
   });
   return ephemeralReply([`${quota}:`, ...lines].join("\n"));
 }
@@ -206,12 +212,16 @@ async function handleList(db: SqlExecutor, owner: OwnerRef, config: CommandConfi
 async function handleExtend(
   db: SqlExecutor,
   owner: OwnerRef,
-  address: string | undefined,
+  addressOrId: string | undefined,
   config: CommandConfig,
   expiryDays: number | undefined
 ) {
-  if (!address) {
+  if (!addressOrId) {
     return ephemeralReply("Missing address.");
+  }
+  const address = await resolveAddressIdentifier(db, owner, addressOrId);
+  if (!address) {
+    return ephemeralReply("Not found or not yours.");
   }
 
   // Unlike /new, leaving `expiry` off here means the configured default
@@ -237,9 +247,13 @@ async function handleExtend(
   return ephemeralReply(`\`${address}\` now expires in ${days} day${days === 1 ? "" : "s"}.`);
 }
 
-async function handleTorch(db: SqlExecutor, owner: OwnerRef, address: string | undefined) {
-  if (!address) {
+async function handleTorch(db: SqlExecutor, owner: OwnerRef, addressOrId: string | undefined) {
+  if (!addressOrId) {
     return ephemeralReply("Missing address.");
+  }
+  const address = await resolveAddressIdentifier(db, owner, addressOrId);
+  if (!address) {
+    return ephemeralReply("Not found or not yours.");
   }
   const updated = await revokeAddress(db, owner, address);
   if (!updated) {

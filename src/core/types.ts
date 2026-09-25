@@ -44,6 +44,7 @@ export interface AddressRow {
   revoked_at: number | null;
   permanent: number;
   note: string | null;
+  short_id: string | null;
   expiry_warned_at: number | null;
   receiver_data: string | null;
 }
