@@ -65,8 +65,14 @@ function getOption(interaction: DiscordInteraction, name: string): string | unde
 // letter and copy/paste picks up stray whitespace, and without this both come
 // back as "Not found or not yours", which reads like an ownership problem
 // rather than a typo.
+// Checks both keys: register-commands.ts registers this option as
+// address_or_id, but until that script has actually been re-run against a
+// given Discord application, Discord is still sending the old address key
+// from before the rename. Once every deployment has re-registered, the
+// fallback can go.
 function getAddressOption(interaction: DiscordInteraction): string | undefined {
-  return getOption(interaction, "address_or_id")?.trim().toLowerCase();
+  const value = getOption(interaction, "address_or_id") ?? getOption(interaction, "address");
+  return value?.trim().toLowerCase();
 }
 
 // Discord sends numbers for INTEGER options. Undefined means the option was
