@@ -178,7 +178,7 @@ async function handleNote(db: SqlExecutor, owner: OwnerRef, remainder: string): 
   const addressOrId = (nextSpace === -1 ? remainder : remainder.slice(0, nextSpace)).trim().toLowerCase();
   const note = (nextSpace === -1 ? "" : remainder.slice(nextSpace + 1)).trim().slice(0, MAX_NOTE_LENGTH);
   if (!addressOrId) {
-    return "Usage: /note <address> [note]";
+    return "Usage: /note <address/id> [note]";
   }
   const address = await resolveAddressIdentifier(db, owner, addressOrId);
   if (!address) {
@@ -199,7 +199,7 @@ async function handleExtend(
 ): Promise<string> {
   const { address: addressOrId, expiryDays } = splitAddressAndTrailingExpiry(remainder);
   if (!addressOrId) {
-    return "Usage: /extend <address> [expiry]";
+    return "Usage: /extend <address/id> [expiry]";
   }
   const address = await resolveAddressIdentifier(db, owner, addressOrId);
   if (!address) {
@@ -228,7 +228,7 @@ async function handleExtend(
 async function handleTorch(db: SqlExecutor, owner: OwnerRef, remainder: string): Promise<string> {
   const addressOrId = remainder.trim().toLowerCase();
   if (!addressOrId) {
-    return "Usage: /torch <address>";
+    return "Usage: /torch <address/id>";
   }
   const address = await resolveAddressIdentifier(db, owner, addressOrId);
   if (!address) {

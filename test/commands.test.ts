@@ -75,14 +75,14 @@ test("/extend expiry", async (t) => {
     // Deliberately different from /new: a command called "extend" doing
     // something other than extending would be worse than the asymmetry.
     const { db, address } = await setup();
-    assert.match(replyText(await run(db, "ext", "extend", [{ name: "address", value: address }])), /expires in 10 days/);
+    assert.match(replyText(await run(db, "ext", "extend", [{ name: "address_or_id", value: address }])), /expires in 10 days/);
     assert.equal((await getAddress(db, address))?.permanent, 0);
   });
 
   await t.test("sets expiry relative to now, not additively", async () => {
     const { db, address } = await setup();
     await run(db, "ext", "extend", [
-      { name: "address", value: address },
+      { name: "address_or_id", value: address },
       { name: "expiry", value: 5 },
     ]);
     const row = await getAddress(db, address);
@@ -93,7 +93,7 @@ test("/extend expiry", async (t) => {
     const { db, address } = await setup();
     assert.match(
       replyText(await run(db, "ext", "extend", [
-        { name: "address", value: address },
+        { name: "address_or_id", value: address },
         { name: "expiry", value: 0 },
       ])),
       /now permanent/
@@ -105,14 +105,14 @@ test("/extend expiry", async (t) => {
 
   await t.test("a later expiry puts a permanent address back on the clock", async () => {
     const { db, address } = await setup();
-    await run(db, "ext", "extend", [{ name: "address", value: address }, { name: "expiry", value: 0 }]);
-    await run(db, "ext", "extend", [{ name: "address", value: address }, { name: "expiry", value: 7 }]);
+    await run(db, "ext", "extend", [{ name: "address_or_id", value: address }, { name: "expiry", value: 0 }]);
+    await run(db, "ext", "extend", [{ name: "address_or_id", value: address }, { name: "expiry", value: 7 }]);
     assert.equal((await getAddress(db, address))?.permanent, 0);
   });
 
   await t.test("refuses an address belonging to someone else", async () => {
     const { db, address } = await setup();
-    assert.match(replyText(await run(db, "someone-else", "extend", [{ name: "address", value: address }])), /Not found/);
+    assert.match(replyText(await run(db, "someone-else", "extend", [{ name: "address_or_id", value: address }])), /Not found/);
   });
 });
 
@@ -129,7 +129,7 @@ test("address input is normalised", async (t) => {
     await t.test(`/torch accepts an address ${label}`, async () => {
       const { db } = testDb();
       const address = await createAddress(db, owner("n"), "ex.com", DAY, false, null);
-      assert.match(replyText(await run(db, "n", "torch", [{ name: "address", value: mangle(address) }])), /Torched/);
+      assert.match(replyText(await run(db, "n", "torch", [{ name: "address_or_id", value: mangle(address) }])), /Torched/);
     });
   }
 
@@ -137,7 +137,7 @@ test("address input is normalised", async (t) => {
     const { db } = testDb();
     const address = await createAddress(db, owner("n"), "ex.com", DAY, false, null);
     const reply = await run(db, "n", "note", [
-      { name: "address", value: ` ${address.toUpperCase()} ` },
+      { name: "address_or_id", value: ` ${address.toUpperCase()} ` },
       { name: "note", value: "x" },
     ]);
     assert.match(replyText(reply), /labelled/);
@@ -158,7 +158,7 @@ test("short id in place of the full address", async (t) => {
     const listReply = replyText(await run(db, "n", "list"));
     const shortId = listReply.match(/#(\d{5})/)?.[1] ?? "";
 
-    const reply = await run(db, "n", "torch", [{ name: "address", value: shortId }]);
+    const reply = await run(db, "n", "torch", [{ name: "address_or_id", value: shortId }]);
     assert.match(replyText(reply), new RegExp(`Torched \`${address}\``));
   });
 
@@ -168,7 +168,7 @@ test("short id in place of the full address", async (t) => {
     const listReply = replyText(await run(db, "owner-1", "list"));
     const shortId = listReply.match(/#(\d{5})/)?.[1] ?? "";
 
-    const reply = await run(db, "owner-2", "torch", [{ name: "address", value: shortId }]);
+    const reply = await run(db, "owner-2", "torch", [{ name: "address_or_id", value: shortId }]);
     assert.match(replyText(reply), /Not found/);
   });
 });
@@ -189,9 +189,9 @@ test("notes", async (t) => {
   await t.test("/note relabels, and a blank value clears it", async () => {
     const { db } = testDb();
     const address = await createAddress(db, owner("n"), "ex.com", DAY, false, "first");
-    await run(db, "n", "note", [{ name: "address", value: address }, { name: "note", value: "second" }]);
+    await run(db, "n", "note", [{ name: "address_or_id", value: address }, { name: "note", value: "second" }]);
     assert.equal((await getAddress(db, address))?.note, "second");
-    await run(db, "n", "note", [{ name: "address", value: address }]);
+    await run(db, "n", "note", [{ name: "address_or_id", value: address }]);
     assert.equal((await getAddress(db, address))?.note, null);
   });
 

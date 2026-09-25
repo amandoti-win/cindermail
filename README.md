@@ -51,12 +51,12 @@ The wizard asks the same questions and writes the same config, plus it offers to
 |---|---|
 | `/new [expiry] [note]` | A fresh address. Permanent unless given an expiry in days. |
 | `/list` | Your addresses, with notes, expiry, and how many of your quota you're using. |
-| `/extend <address> [expiry]` | Change when one expires. `expiry: 0` makes it permanent. |
-| `/note <address> [note]` | Label one. Blank clears it. |
+| `/extend <address/id> [expiry]` | Change when one expires. `expiry: 0` makes it permanent. |
+| `/note <address/id> [note]` | Label one. Blank clears it. |
 | `/remind [on/off]` | Opt in to a message a day before an address expires. |
-| `/torch <address>` | Kill it. |
+| `/torch <address/id>` | Kill it. |
 
-`/list` shows a short 5-digit id next to each address (`#48213`). `/extend`, `/note`, and `/torch` all accept that id instead of retyping the full address.
+`/list` shows a short 5-digit id next to each address (`#48213`). `/extend`, `/note`, and `/torch` all accept that id instead: just the digits, no `#`.
 
 Same six commands across Discord, Telegram, and Slack; exact syntax differs slightly per platform (Discord takes structured options, Telegram and Slack read plain text after the command, and Slack's are prefixed `/cm-` since Slack rejects bare generic command names). Discord and Slack replies are ephemeral, visible only to whoever ran the command; Telegram only works in a private chat with the bot for the same reason, since it has no ephemeral-reply equivalent. Details in [docs/discord-adapter.md](docs/discord-adapter.md), [docs/telegram-adapter.md](docs/telegram-adapter.md), and [docs/slack-adapter.md](docs/slack-adapter.md).
 

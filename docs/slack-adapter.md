@@ -47,17 +47,17 @@ features:
     - command: /cm-extend
       url: https://YOUR-WORKER-URL/slack/commands
       description: Change when an address expires
-      usage_hint: "<address> [expiry]"
+      usage_hint: "<address/id> [expiry]"
       should_escape: false
     - command: /cm-note
       url: https://YOUR-WORKER-URL/slack/commands
       description: Label an address
-      usage_hint: "<address> [note]"
+      usage_hint: "<address/id> [note]"
       should_escape: false
     - command: /cm-torch
       url: https://YOUR-WORKER-URL/slack/commands
       description: Kill an address
-      usage_hint: "<address>"
+      usage_hint: "<address/id>"
       should_escape: false
     - command: /cm-remind
       url: https://YOUR-WORKER-URL/slack/commands
@@ -142,12 +142,12 @@ Every reply uses Slack's `ephemeral` response type: visible only to whoever ran 
 |---|---|---|
 | `/cm-new [expiry] [note]` | Creates an address. Permanent unless `expiry` is given. | 1 per 30s |
 | `/cm-list` | Your addresses, notes, and expiry. | 15 per 60s |
-| `/cm-extend <address> [expiry]` | Changes when an address expires. | 15 per 60s |
-| `/cm-note <address> [note]` | Labels an address. Blank clears it. | 15 per 60s |
-| `/cm-torch <address>` | Revokes an address. | 15 per 60s |
+| `/cm-extend <address/id> [expiry]` | Changes when an address expires. | 15 per 60s |
+| `/cm-note <address/id> [note]` | Labels an address. Blank clears it. | 15 per 60s |
+| `/cm-torch <address/id>` | Revokes an address. | 15 per 60s |
 | `/cm-remind [on\|off]` | Expiry reminder DMs. Blank shows the current setting. | 15 per 60s |
 
-`/cm-list` shows a short 5-digit id next to each address (`#48213`). `/cm-extend`, `/cm-note`, and `/cm-torch` all accept that id in place of `<address>`.
+`/cm-list` shows a short 5-digit id next to each address (`#48213`). `/cm-extend`, `/cm-note`, and `/cm-torch` all accept that id there too: just the digits, no `#`.
 
 Plain text after the command, no structured options: for `/cm-new` and `/cm-note`, a leading number is read as `expiry`; everything else is the note. For `/cm-extend`, the address comes first and an optional trailing number is the new expiry:
 

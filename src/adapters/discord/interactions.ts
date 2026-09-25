@@ -66,7 +66,7 @@ function getOption(interaction: DiscordInteraction, name: string): string | unde
 // back as "Not found or not yours", which reads like an ownership problem
 // rather than a typo.
 function getAddressOption(interaction: DiscordInteraction): string | undefined {
-  return getOption(interaction, "address")?.trim().toLowerCase();
+  return getOption(interaction, "address_or_id")?.trim().toLowerCase();
 }
 
 // Discord sends numbers for INTEGER options. Undefined means the option was

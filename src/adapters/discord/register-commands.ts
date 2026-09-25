@@ -62,8 +62,8 @@ const commands = [
     options: [
       {
         type: 3,
-        name: "address",
-        description: "The address to label",
+        name: "address_or_id",
+        description: "The address, or its short id from /list (digits only, no #)",
         required: true,
       },
       {
@@ -83,8 +83,8 @@ const commands = [
     options: [
       {
         type: 3,
-        name: "address",
-        description: "The address to extend",
+        name: "address_or_id",
+        description: "The address, or its short id from /list (digits only, no #)",
         required: true,
       },
       {
@@ -105,8 +105,8 @@ const commands = [
     options: [
       {
         type: 3,
-        name: "address",
-        description: "The address to torch",
+        name: "address_or_id",
+        description: "The address, or its short id from /list (digits only, no #)",
         required: true,
       },
     ],

@@ -147,7 +147,7 @@ test("a reminder is only sent once", async (t) => {
 
     await handleInteraction(
       command("u1", "extend", [
-        { name: "address", value: address },
+        { name: "address_or_id", value: address },
         { name: "expiry", value: 2 },
       ]),
       db,

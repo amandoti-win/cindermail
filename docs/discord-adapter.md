@@ -95,12 +95,12 @@ Replies are ephemeral: only the person who ran the command sees them.
 |---|---|---|
 | `/new [expiry] [note]` | Creates an address. Permanent unless `expiry` is set. | 1 per 30s |
 | `/list` | Your addresses, notes, and expiry. | 15 per 60s |
-| `/extend <address> [expiry]` | Changes when an address expires. | 15 per 60s |
-| `/note <address> [note]` | Labels an address. Blank clears it. | 15 per 60s |
-| `/torch <address>` | Revokes an address. | 15 per 60s |
+| `/extend <address/id> [expiry]` | Changes when an address expires. | 15 per 60s |
+| `/note <address/id> [note]` | Labels an address. Blank clears it. | 15 per 60s |
+| `/torch <address/id>` | Revokes an address. | 15 per 60s |
 | `/remind [enabled]` | Expiry reminder DMs. Blank shows the setting. | 15 per 60s |
 
-`/list` shows a short 5-digit id next to each address (`#48213`). `/extend`, `/note`, and `/torch` all accept that id in place of `<address>`.
+`/list` shows a short 5-digit id next to each address (`#48213`). `/extend`, `/note`, and `/torch` all accept that id there too: just the digits, no `#`.
 
 ## Expiry
 
