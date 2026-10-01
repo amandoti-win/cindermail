@@ -27,7 +27,7 @@ Every command on this page assumes your terminal's current directory is the clon
 ## 1. Clone and install
 
 ```bash
-git clone https://github.com/psalm2517/cindermail.git
+git clone https://github.com/amandoti-win/cindermail.git
 cd Cindermail
 npm install
 ```
