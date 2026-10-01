@@ -6,7 +6,7 @@ import { createSlackAdapter } from "./adapters/slack/index.ts";
 import { handleSlackCommandRequest } from "./adapters/slack/webhook.ts";
 import { buildCommandConfig } from "./core/config.ts";
 import { handleInteraction, type DiscordInteraction } from "./adapters/discord/interactions.ts";
-import { createAddress, getCounters } from "./core/db.ts";
+import { backfillShortIds, createAddress, getCounters } from "./core/db.ts";
 import { createDispatcher } from "./core/dispatch.ts";
 import { handleInboundEmail } from "./core/email.ts";
 import { sendExpiryWarnings } from "./core/expiry-warning.ts";
@@ -185,6 +185,14 @@ export default {
     // via /remind, and never throws, so a reminder failure can't stop
     // cleanup from running.
     await sendExpiryWarnings(db, createDispatcher(buildAdapters(env)));
+
+    // Convenience only, so a failure is logged and never allowed to stop the
+    // cleanup below.
+    try {
+      await backfillShortIds(db);
+    } catch (err) {
+      console.warn(`short id backfill skipped: ${err instanceof Error ? err.message : String(err)}`);
+    }
 
     // Same reasoning as the poll above: runMailtmCleanup handles both kinds
     // of row in one pass (it deletes each mailbox on mail.tm's side first

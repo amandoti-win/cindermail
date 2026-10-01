@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import {
+  backfillShortIds,
   createAddress,
   deleteExpiredAndRevoked,
   getCounters,
@@ -151,6 +152,25 @@ test("short ids", async (t) => {
     assert.equal(await resolveAddressIdentifier(db, owner("u1"), "abc123@ex.com"), "abc123@ex.com");
     assert.equal(await resolveAddressIdentifier(db, owner("u1"), "1234"), "1234");
     assert.equal(await resolveAddressIdentifier(db, owner("u1"), "123456"), "123456");
+  });
+
+  await t.test("backfill gives pre-existing addresses unique ids and leaves the rest alone", async () => {
+    const { db, raw } = testDb();
+    const keep = await createAddress(db, owner("u1"), "ex.com", DAY, false, null);
+    const keepId = (await listActiveAddresses(db, owner("u1")))[0]?.short_id;
+    for (const name of ["old1", "old2", "old3"]) {
+      raw.exec(
+        `INSERT INTO addresses (address, owner_type, owner_id, created_at, expires_at, revoked, permanent)
+         VALUES ('${name}@ex.com', 'discord', 'u1', 0, ${Math.floor(Date.now() / 1000) + DAY}, 0, 0)`
+      );
+    }
+
+    assert.equal(await backfillShortIds(db), 3);
+    const ids = (await listActiveAddresses(db, owner("u1"))).map((r) => r.short_id);
+    assert.equal(new Set(ids).size, 4);
+    assert.ok(ids.every((id) => /^\d{5}$/.test(id ?? "")));
+    assert.equal((await listActiveAddresses(db, owner("u1"))).find((r) => r.address === keep)?.short_id, keepId);
+    assert.equal(await backfillShortIds(db), 0);
   });
 
   await t.test("a torched address's short id stops resolving", async () => {

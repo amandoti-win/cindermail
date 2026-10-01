@@ -61,6 +61,28 @@ async function generateUniqueShortId(db: SqlExecutor): Promise<string> {
   throw new Error("failed to allocate a unique short id after several attempts");
 }
 
+// Addresses created before short ids existed (migration 0008) have NULL. A
+// SQL-only backfill can't promise uniqueness against the random ids already
+// handed out, so this assigns them through the same collision check new
+// addresses use. Runs from the daily cleanup so every deployment fills its
+// own gaps without a manual step; a no-op once nothing is left.
+export async function backfillShortIds(db: SqlExecutor): Promise<number> {
+  const rows = await db.all<{ address: string }>(
+    `SELECT address FROM addresses WHERE short_id IS NULL AND revoked = 0`
+  );
+  let filled = 0;
+  for (const { address } of rows) {
+    const shortId = await generateUniqueShortId(db);
+    const result = await db.run(
+      `UPDATE addresses SET short_id = ? WHERE address = ? AND short_id IS NULL`,
+      shortId,
+      address
+    );
+    filled += result.changes;
+  }
+  return filled;
+}
+
 export async function createAddress(
   db: SqlExecutor,
   owner: OwnerRef,
