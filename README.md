@@ -79,14 +79,6 @@ The Worker root serves a status page with running totals, also available as JSON
 - Attachments forward up to 25MB combined per email on Discord, or 50MB per file on Telegram and Slack. Anything over budget is dropped with a note, not the whole batch.
 
 Code layout and tests: [docs/architecture.md](docs/architecture.md). Every setting: [docs/configuration.md](docs/configuration.md).
-
-## Planned
-
-- Private hosting as a service
-
-- Webview for reading full HTML emails on the web
-
-- Freemium public instance
   
 ## AI disclosure
 
