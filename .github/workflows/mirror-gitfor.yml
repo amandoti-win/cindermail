@@ -1,0 +1,29 @@
+name: Mirror to Gitfor
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+concurrency:
+  group: mirror-gitfor
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Push to Gitfor
+        env:
+          GITFOR_TOKEN: ${{ secrets.GITFOR_TOKEN }}
+        run: |
+          git push --force \
+            "https://ncx:${GITFOR_TOKEN}@gitfor.dev/amandoti/cindermail.git" \
+            "refs/remotes/origin/main:refs/heads/main" \
+            "refs/tags/*:refs/tags/*"
