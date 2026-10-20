@@ -2,7 +2,7 @@
 
 ![Cindermail](docs/images/banner.png)
 
-[Website](https://cindermail.xyz) | [Demo](https://cindermail.xyz/demo) | [Docs](https://cindermail.xyz/docs)
+[Website](https://cindermail.xyz) | [Demo](https://cindermail.xyz/demo) | [Docs](https://cindermail.xyz/docs) | [Roadmap](https://cindermail.xyz/roadmap)
 
 [![Release](https://img.shields.io/github/v/release/amandoti-win/cindermail)](https://github.com/amandoti-win/cindermail/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
