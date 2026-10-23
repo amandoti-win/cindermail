@@ -31,19 +31,37 @@ function groupByOwner(rows: AddressRow[]): Map<string, { owner: OwnerRef; rows: 
   return groups;
 }
 
-// <t:...:R> renders as "in 20 hours" in the reader's own locale and timezone,
-// so the message never has to guess either.
-function buildMessage(rows: AddressRow[]): string {
+// Discord renders <t:...:R> as "in 20 hours" in the reader's own locale and
+// timezone. Telegram and Slack get plain text and an explicit UTC time, plus
+// their own spelling of the opt-out command.
+const OPT_OUT: Record<string, string> = {
+  discord: "`/remind enabled: false`",
+  telegram: "/remind off",
+  slack: "/cm-remind off",
+};
+
+function buildMessage(rows: AddressRow[], ownerType: string): string {
+  const discord = ownerType === "discord";
   const lines = rows.map((row) => {
     const label = row.note ? ` (${row.note.replaceAll("`", "")})` : "";
-    return `\`${row.address}\`${label}, expires <t:${row.expires_at}:R>`;
+    const when = discord
+      ? `<t:${row.expires_at}:R>`
+      : `at ${new Date(row.expires_at * 1000).toISOString().replace("T", " ").slice(0, 16)} UTC`;
+    return discord ? `\`${row.address}\`${label}, expires ${when}` : `${row.address}${label}, expires ${when}`;
   });
-  const heading =
-    rows.length === 1
-      ? "**One of your addresses expires soon.**"
-      : `**${rows.length} of your addresses expire soon.**`;
-  return `${heading}\n${lines.join("\n")}\n\n\`/extend\` any you still need. Anything you don't will be torched automatically. \`/remind enabled: false\` turns these off.`;
+  const title = rows.length === 1 ? "One of your addresses expires soon." : `${rows.length} of your addresses expire soon.`;
+  const heading = discord ? `**${title}**` : title;
+  const extend = ownerType === "slack" ? "/cm-extend" : discord ? "`/extend`" : "/extend";
+  const optOut = OPT_OUT[ownerType] ?? "/remind off";
+  return `${heading}\n${lines.join("\n")}\n\n${extend} any you still need. Anything you don't will be torched automatically. ${optOut} turns these off.`;
 }
+
+// Bounds the per-run fan-out. Each owner costs up to two outbound
+// subrequests and one D1 write, all sharing one invocation's budget with the
+// cleanup that follows. Owners past the cap are skipped this run (and, since
+// the window is a day wide, usually miss their reminder) -- an acceptable
+// loss next to cleanup failing outright.
+const MAX_OWNERS_PER_RUN = 20;
 
 // Sent from the daily cleanup cron, immediately before the cleanup itself, so
 // an address can't be deleted in the same run that was about to warn about
@@ -65,10 +83,15 @@ export async function sendExpiryWarnings(db: SqlExecutor, dispatcher: Dispatcher
   }
 
   let notified = 0;
+  let processed = 0;
   for (const { owner, rows } of groupByOwner(due).values()) {
+    if (processed++ >= MAX_OWNERS_PER_RUN) {
+      console.warn("expiry reminders capped for this run; the rest wait for the next one");
+      break;
+    }
     try {
       // One DM per owner listing everything, rather than one per address.
-      const result = await dispatcher.notifyOwner(owner, buildMessage(rows));
+      const result = await dispatcher.notifyOwner(owner, buildMessage(rows, owner.type));
       if (result.success) {
         notified++;
       } else {

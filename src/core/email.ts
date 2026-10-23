@@ -13,6 +13,10 @@ export interface InboundMessage {
   raw: RawEmail;
 }
 
+function oneLine(value: string): string {
+  return value.replace(/[\r\n\u0085\u2028\u2029]+/g, " ");
+}
+
 export async function handleInboundEmail(
   message: InboundMessage,
   db: SqlExecutor,
@@ -27,13 +31,17 @@ export async function handleInboundEmail(
   }
 
   const owner: OwnerRef = { type: row.owner_type, id: row.owner_id };
-  await incrementReceivedCounter(db);
 
   const parsed = await PostalMime.parse(message.raw, { attachmentEncoding: "arraybuffer" });
+  // Counted only once the message actually parsed, so a message that can't
+  // be (and gets retried, or bounced) doesn't inflate the public counter.
+  await incrementReceivedCounter(db);
   const mail: ParsedMail = {
-    from: parsed.from?.address ?? message.from,
+    // Decoded header values can contain line breaks (RFC 2047), which would
+    // let a sender forge extra From:/To: lines in every adapter's header.
+    from: oneLine(parsed.from?.address ?? message.from),
     to: row.address,
-    subject: parsed.subject ?? "(no subject)",
+    subject: oneLine(parsed.subject ?? "(no subject)"),
     text: parsed.text ?? "",
     html: parsed.html,
     attachments: parsed.attachments.map((a) => ({

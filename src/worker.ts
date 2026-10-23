@@ -6,7 +6,7 @@ import { createSlackAdapter } from "./adapters/slack/index.ts";
 import { handleSlackCommandRequest } from "./adapters/slack/webhook.ts";
 import { buildCommandConfig } from "./core/config.ts";
 import { handleInteraction, type DiscordInteraction } from "./adapters/discord/interactions.ts";
-import { backfillShortIds, createAddress, getCounters } from "./core/db.ts";
+import { backfillShortIds, createAddress, getCounters, type Counters } from "./core/db.ts";
 import { createDispatcher } from "./core/dispatch.ts";
 import { handleInboundEmail } from "./core/email.ts";
 import { sendExpiryWarnings } from "./core/expiry-warning.ts";
@@ -60,6 +60,17 @@ export interface Env {
 // is the frequent mail.tm poll, which no-ops immediately in domain mode.
 const CLEANUP_CRON = "0 3 * * *";
 
+// Cloudflare doesn't cache a Worker's own responses at the edge, so the
+// Cache-Control header on /counters alone never stopped a request from
+// reaching D1. Memoized per isolate instead: public, display-only numbers.
+const COUNTERS_TTL_MS = 5 * 60 * 1000;
+let countersMemo: { at: number; value: Counters } | null = null;
+
+// Interaction and slash-command payloads are a few KB. Refuse anything far
+// larger before buffering it, since the body is read before it can be
+// authenticated.
+const MAX_SIGNED_BODY_BYTES = 64 * 1024;
+
 function usesOwnDomain(env: Env): boolean {
   return !!env.DISPOSABLE_DOMAIN && env.DISPOSABLE_DOMAIN.trim() !== "";
 }
@@ -96,8 +107,11 @@ export default {
     }
 
     if (request.method === "GET" && url.pathname === "/counters") {
-      const db = createD1Executor(env.DB);
-      const counters = await getCounters(db);
+      const now = Date.now();
+      if (!countersMemo || now - countersMemo.at > COUNTERS_TTL_MS) {
+        countersMemo = { at: now, value: await getCounters(createD1Executor(env.DB)) };
+      }
+      const counters = countersMemo.value;
       // Public and unauthenticated, and the user count is a full scan of the
       // addresses table. Cache so hammering this can't run up D1 reads; the
       // page's own client-side cache only hits this every 30 minutes at
@@ -110,15 +124,22 @@ export default {
     if (request.method === "POST" && url.pathname === "/interactions") {
       const signature = request.headers.get("X-Signature-Ed25519");
       const timestamp = request.headers.get("X-Signature-Timestamp");
-      const rawBody = await request.text();
-
       if (!signature || !timestamp) {
         return new Response("missing signature headers", { status: 401 });
       }
+      if (Number(request.headers.get("Content-Length") ?? 0) > MAX_SIGNED_BODY_BYTES) {
+        return new Response("payload too large", { status: 413 });
+      }
+      const rawBody = await request.text();
 
       const isValid = await verifyKey(rawBody, signature, timestamp, env.DISCORD_PUBLIC_KEY);
       if (!isValid) {
         return new Response("invalid request signature", { status: 401 });
+      }
+      // verifyKey proves Discord signed this, not when. Same 5-minute window
+      // the Slack handler enforces, so a captured request can't be replayed.
+      if (Math.abs(Date.now() / 1000 - Number(timestamp)) > 300) {
+        return new Response("stale request", { status: 401 });
       }
 
       let interaction: DiscordInteraction;

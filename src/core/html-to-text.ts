@@ -32,7 +32,9 @@ function decodeEntities(text: string): string {
   return text.replace(/&(#x[0-9a-f]+|#\d+|[a-z0-9]+);/gi, (match, entity: string) => {
     if (entity[0] === "#") {
       const code = entity[1] === "x" || entity[1] === "X" ? parseInt(entity.slice(2), 16) : parseInt(entity.slice(1), 10);
-      return Number.isFinite(code) ? String.fromCodePoint(code) : match;
+      // fromCodePoint throws RangeError past U+10FFFF, which would fail the
+      // whole delivery over one bad entity.
+      return Number.isInteger(code) && code >= 0 && code <= 0x10ffff ? String.fromCodePoint(code) : "\uFFFD";
     }
     return ENTITIES[entity.toLowerCase()] ?? match;
   });
@@ -54,7 +56,13 @@ const INVISIBLE_CHARS = /[\u00AD\u034F\u200B-\u200F\u202A-\u202E\u2060\uFEFF]/g;
 
 const BLOCK_CLOSE_TAGS = /<\/(p|div|tr|table|li|h[1-6]|blockquote|section|article|header|footer)>/gi;
 const BREAK_TAGS = /<br\s*\/?>/gi;
-const ANCHOR_TAG = /<a\b[^>]*\bhref\s*=\s*["']([^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi;
+// Every pattern below has to stay linear in the input: mail is
+// attacker-controlled, and a regex that can fail after scanning to the end of
+// the string from every '<' is quadratic (a 256KB body of bare '<' used to
+// cost ~23s of CPU). So tag scans use [^<>] and can't run past the next tag,
+// and an unclosed <a> runs to the end of input instead of failing.
+const ANCHOR_TAG = /<a\b(?=[^<>]*\bhref\s*=)([^<>]*)>([\s\S]*?)(?:<\/a>|$)/gi;
+const HREF_ATTR = /\bhref\s*=\s*["']([^"']*)["']/i;
 
 // Screen-reader-only accessibility text (e.g. Salesforce Marketing Cloud's
 // pattern of a hidden <span> with a label like "Experian header logo" next to
@@ -67,9 +75,51 @@ const ANCHOR_TAG = /<a\b[^>]*\bhref\s*=\s*["']([^"']*)["'][^>]*>([\s\S]*?)<\/a>/
 // wrap huge chunks of the real, intended content. Only treat this as a
 // throwaway accessibility label when it's short; an actual a11y label is a
 // few words, never a full content block.
-const HIDDEN_ELEMENT_CANDIDATE =
-  /<(span|div|td|p)\b(?=[^>]*\b(?:class\s*=\s*["'][^"']*(?:sr-only|screen-?reader|visually-?hidden|assistive)[^"']*["']|style\s*=\s*["'][^"']*(?:display\s*:\s*none|visibility\s*:\s*hidden|font-size\s*:\s*0)[^"']*["']))[^>]*>[\s\S]*?<\/\1>/gi;
+const HIDDEN_OPEN_TAG = /<(span|div|td|p)\b([^<>]*)>/gi;
+const HIDDEN_ATTR =
+  /\b(?:class\s*=\s*["'][^"']*(?:sr-only|screen-?reader|visually-?hidden|assistive)|style\s*=\s*["'][^"']*(?:display\s*:\s*none|visibility\s*:\s*hidden|font-size\s*:\s*0))/i;
 const HIDDEN_ELEMENT_MAX_LENGTH = 300;
+
+// Short hidden elements are removed whole; the closing tag is only looked
+// for inside the HIDDEN_ELEMENT_MAX_LENGTH window, since anything longer is
+// kept anyway, which keeps this linear however many unclosed candidates
+// there are.
+function stripHiddenLabels(html: string): string {
+  let out = "";
+  let pos = 0;
+  HIDDEN_OPEN_TAG.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = HIDDEN_OPEN_TAG.exec(html)) !== null) {
+    const tag = m[1] ?? "";
+    if (!HIDDEN_ATTR.test(m[2] ?? "")) {
+      continue;
+    }
+    const afterOpen = html.slice(m.index + m[0].length, m.index + HIDDEN_ELEMENT_MAX_LENGTH);
+    const closer = new RegExp(`<\\/${tag}>`, "i").exec(afterOpen);
+    if (!closer) {
+      continue;
+    }
+    const end = m.index + m[0].length + closer.index + closer[0].length;
+    out += html.slice(pos, m.index);
+    pos = end;
+    HIDDEN_OPEN_TAG.lastIndex = end;
+  }
+  return out + html.slice(pos);
+}
+
+// Removes `opener...closer` blocks, searching only the text up to the last
+// closer: past it no block can close, and letting a lazy regex try anyway
+// rescans to the end of the string from every unclosed opener.
+function stripClosedBlocks(text: string, pattern: RegExp, closer: RegExp): string {
+  let end = -1;
+  for (const c of text.matchAll(closer)) {
+    end = (c.index ?? 0) + c[0].length;
+  }
+  if (end === -1) {
+    return text;
+  }
+  return text.slice(0, end).replace(pattern, "") + text.slice(end);
+}
 
 // Extracted link URLs are held out of the text entirely and spliced back in
 // as the very last step, in whatever form the calling adapter wants (Discord
@@ -86,12 +136,12 @@ const URL_SLOT = /\uE000(\d+)\uE001/g;
 function replaceLinks(text: string, urls: string[]): string {
   const seenUrls = new Set<string>();
 
-  return text.replace(ANCHOR_TAG, (match, href: string, inner: string) => {
+  return text.replace(ANCHOR_TAG, (_match, attrs: string, inner: string) => {
     // Image-only links (logos, social icons, app-store badges, tracking pixels)
     // carry no readable content. Alt text is for accessibility, not a summary,
     // and surfacing it just clutters the message with decorative noise. Only
     // links with real anchor text are kept.
-    const label = inner.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    const label = inner.replace(/<[^<>]+>/g, " ").replace(/\s+/g, " ").trim();
     if (!label) {
       return "";
     }
@@ -99,6 +149,7 @@ function replaceLinks(text: string, urls: string[]): string {
     // Decoded here rather than by the pipeline's later pass, since the URL
     // leaves the text at this point and never goes through it. Query strings
     // routinely carry &amp; that has to come back as &.
+    const href = HREF_ATTR.exec(attrs)?.[1] ?? "";
     const url = decodeEntities(href.trim());
     if (!url || url.startsWith("#") || url.toLowerCase().startsWith("javascript:")) {
       return label;
@@ -130,17 +181,18 @@ export interface HtmlToTextOptions {
 export function htmlToText(html: string, options: HtmlToTextOptions): string {
   const urls: string[] = [];
 
-  let text = html
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/<(script|style|head)[\s\S]*?<\/\1>/gi, "")
-    .replace(HIDDEN_ELEMENT_CANDIDATE, (match) => (match.length <= HIDDEN_ELEMENT_MAX_LENGTH ? "" : match));
+  let text = stripClosedBlocks(html, /<!--[\s\S]*?-->/g, /-->/g);
+  for (const tag of ["script", "style", "head"]) {
+    text = stripClosedBlocks(text, new RegExp(`<${tag}\\b[\\s\\S]*?<\\/${tag}>`, "gi"), new RegExp(`<\\/${tag}>`, "gi"));
+  }
+  text = stripHiddenLabels(text);
 
   text = replaceLinks(text, urls);
 
   text = text
     .replace(BREAK_TAGS, "\n")
     .replace(BLOCK_CLOSE_TAGS, "\n")
-    .replace(/<[^>]+>/g, "");
+    .replace(/<[^<>]+>/g, "");
 
   // Entity decoding runs before the invisible-char strip, not after: some
   // senders write this padding as named entities (&shy; &zwnj;) rather than

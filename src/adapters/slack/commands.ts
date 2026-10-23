@@ -80,7 +80,7 @@ export async function handleSlashCommand(
   const remainder = payload.text.trim();
   const owner: OwnerRef = { type: "slack", id: payload.user_id };
 
-  const limit = config.rateLimits[command];
+  const limit = Object.hasOwn(config.rateLimits, command) ? config.rateLimits[command] : undefined;
   if (limit) {
     const allowed = await checkAndIncrement(db, owner.type, owner.id, command, limit.windowSeconds, limit.maxCount);
     if (!allowed) {

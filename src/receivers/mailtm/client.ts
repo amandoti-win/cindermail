@@ -42,13 +42,25 @@ function authHeader(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}` };
 }
 
+// The active domain changes rarely; caching it per isolate drops one of the
+// sequential mail.tm round trips /new makes inside Discord's and Slack's
+// 3-second reply window. The fetch itself is read-only, so it's safe to
+// time out.
+const DOMAIN_CACHE_SECONDS = 600;
+let cachedDomain: { domain: string; fetchedAt: number } | undefined;
+
 export async function getActiveDomain(): Promise<string> {
-  const response = await mailtmFetch("/domains");
+  const now = Date.now() / 1000;
+  if (cachedDomain && now - cachedDomain.fetchedAt < DOMAIN_CACHE_SECONDS) {
+    return cachedDomain.domain;
+  }
+  const response = await mailtmFetch("/domains", { signal: AbortSignal.timeout(1500) });
   const body = (await response.json()) as { "hydra:member": { domain: string; isActive: boolean }[] };
   const active = body["hydra:member"].find((d) => d.isActive);
   if (!active) {
     throw new Error("mail.tm has no active domains available right now");
   }
+  cachedDomain = { domain: active.domain, fetchedAt: now };
   return active.domain;
 }
 
@@ -73,12 +85,14 @@ export async function getToken(address: string, password: string): Promise<strin
 export interface MailtmMessageSummary {
   id: string;
   sourceUrl: string;
+  // Bytes, as reported by mail.tm. 0 if absent.
+  size: number;
 }
 
 export async function listMessages(token: string): Promise<MailtmMessageSummary[]> {
   const response = await mailtmFetch("/messages", { headers: authHeader(token) });
-  const body = (await response.json()) as { "hydra:member": { id: string; sourceUrl: string }[] };
-  return body["hydra:member"].map((m) => ({ id: m.id, sourceUrl: m.sourceUrl }));
+  const body = (await response.json()) as { "hydra:member": { id: string; sourceUrl: string; size?: number }[] };
+  return body["hydra:member"].map((m) => ({ id: m.id, sourceUrl: m.sourceUrl, size: Number(m.size) || 0 }));
 }
 
 export async function fetchSource(token: string, sourceUrl: string): Promise<string> {

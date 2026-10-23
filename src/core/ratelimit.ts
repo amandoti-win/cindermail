@@ -1,5 +1,11 @@
 import type { SqlExecutor } from "./storage.ts";
 
+// One conditional upsert rather than SELECT-then-write, so concurrent
+// requests from the same owner can't all read the same stale count and all
+// pass. SQLite evaluates every SET expression and the WHERE against the row
+// as it was before the update, and D1 serializes writes, so exactly one
+// statement observes each count value. changes = 0 means the WHERE refused
+// the update: the window is still open and already at maxCount.
 export async function checkAndIncrement(
   db: SqlExecutor,
   ownerType: string,
@@ -10,36 +16,25 @@ export async function checkAndIncrement(
 ): Promise<boolean> {
   const now = Math.floor(Date.now() / 1000);
 
-  const existing = await db.first<{ window_start: number; count: number }>(
-    `SELECT window_start, count FROM rate_limits WHERE owner_type = ? AND owner_id = ? AND action = ?`,
+  const result = await db.run(
+    `INSERT INTO rate_limits (owner_type, owner_id, action, window_start, count)
+     VALUES (?, ?, ?, ?, 1)
+     ON CONFLICT(owner_type, owner_id, action) DO UPDATE SET
+       count = CASE WHEN ? - rate_limits.window_start > ? THEN 1 ELSE rate_limits.count + 1 END,
+       window_start = CASE WHEN ? - rate_limits.window_start > ? THEN ? ELSE rate_limits.window_start END
+     WHERE ? - rate_limits.window_start > ? OR rate_limits.count < ?`,
     ownerType,
     ownerId,
-    action
+    action,
+    now,
+    now,
+    windowSeconds,
+    now,
+    windowSeconds,
+    now,
+    now,
+    windowSeconds,
+    maxCount
   );
-
-  if (!existing || now - existing.window_start > windowSeconds) {
-    await db.run(
-      `INSERT INTO rate_limits (owner_type, owner_id, action, window_start, count)
-       VALUES (?, ?, ?, ?, 1)
-       ON CONFLICT(owner_type, owner_id, action)
-       DO UPDATE SET window_start = excluded.window_start, count = 1`,
-      ownerType,
-      ownerId,
-      action,
-      now
-    );
-    return true;
-  }
-
-  if (existing.count >= maxCount) {
-    return false;
-  }
-
-  await db.run(
-    `UPDATE rate_limits SET count = count + 1 WHERE owner_type = ? AND owner_id = ? AND action = ?`,
-    ownerType,
-    ownerId,
-    action
-  );
-  return true;
+  return result.changes > 0;
 }

@@ -1,11 +1,14 @@
 import { randomAlphanumeric, registerAddress } from "../../core/db.ts";
 import type { SqlExecutor } from "../../core/storage.ts";
 import type { OwnerRef } from "../../core/types.ts";
-import { createAccount, getActiveDomain, MailtmApiError } from "./client.ts";
+import { createAccount, deleteAccount, getActiveDomain, getToken, MailtmApiError } from "./client.ts";
 
 const LOCAL_PART_LENGTH = 10;
 const PASSWORD_LENGTH = 24;
-const MAX_CREATE_ATTEMPTS = 5;
+// Kept low: every attempt is a sequential mail.tm round trip inside the
+// platform's 3-second synchronous reply window, and a 422 on a random
+// 10-char local part is rare.
+const MAX_CREATE_ATTEMPTS = 3;
 
 export interface MailtmReceiverData {
   provider: "mailtm";
@@ -34,7 +37,16 @@ export async function createMailtmAddress(
     try {
       const account = await createAccount(address, password);
       const receiverData: MailtmReceiverData = { provider: "mailtm", password, accountId: account.id };
-      await registerAddress(db, address, owner, ttlSeconds, JSON.stringify(receiverData), permanent, note);
+      try {
+        await registerAddress(db, address, owner, ttlSeconds, JSON.stringify(receiverData), permanent, note);
+      } catch (err) {
+        // The row (and with it the only copy of the password) never landed,
+        // so this is the last chance to remove the mailbox on mail.tm's side.
+        await getToken(address, password)
+          .then((token) => deleteAccount(token, account.id))
+          .catch(() => {});
+        throw err;
+      }
       return address;
     } catch (err) {
       // 422 means the address is already taken on mail.tm's side (or, once

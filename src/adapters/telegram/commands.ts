@@ -105,7 +105,7 @@ export async function handleUpdate(
   const owner: OwnerRef = { type: "telegram", id: String(message.from.id) };
   const { command, remainder } = parseCommandLine(message.text);
 
-  const limit = config.rateLimits[command];
+  const limit = Object.hasOwn(config.rateLimits, command) ? config.rateLimits[command] : undefined;
   if (limit) {
     const allowed = await checkAndIncrement(db, owner.type, owner.id, command, limit.windowSeconds, limit.maxCount);
     if (!allowed) {

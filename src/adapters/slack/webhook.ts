@@ -19,10 +19,11 @@ function usesOwnDomain(env: SlackWebhookEnv): boolean {
   return !!env.DISPOSABLE_DOMAIN && env.DISPOSABLE_DOMAIN.trim() !== "";
 }
 
-// Slack expects a response within 3 seconds; every command handler here is
-// DB-only (no outbound network calls), so replying inline in the HTTP
-// response is simple and fast enough, no need for the async response_url
-// path Slack also supports.
+// Slack expects a response within 3 seconds. Every handler is DB-only except
+// /cm-new in mail.tm mode, which makes sequential calls to mail.tm; those are
+// kept few (cached domain, capped retries) rather than moved to the async
+// response_url path. A timeout there can still leave a created address the
+// user didn't see; /cm-list shows it.
 export async function handleSlackCommandRequest(
   request: Request,
   env: SlackWebhookEnv,
@@ -34,11 +35,15 @@ export async function handleSlackCommandRequest(
 
   const signature = request.headers.get("X-Slack-Signature");
   const timestamp = request.headers.get("X-Slack-Request-Timestamp");
-  const rawBody = await request.text();
-
   if (!signature || !timestamp) {
     return new Response("missing signature headers", { status: 401 });
   }
+  // Slash-command bodies are a few hundred bytes; don't buffer arbitrary
+  // unauthenticated uploads before the signature can be checked.
+  if (Number(request.headers.get("Content-Length") ?? 0) > 64 * 1024) {
+    return new Response("payload too large", { status: 413 });
+  }
+  const rawBody = await request.text();
 
   const isValid = await verifySlackSignature(env.SLACK_SIGNING_SECRET, rawBody, timestamp, signature);
   if (!isValid) {

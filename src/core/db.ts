@@ -100,7 +100,7 @@ export async function createAddress(
     const result = await db.run(
       `INSERT INTO addresses (address, short_id, owner_type, owner_id, created_at, expires_at, revoked, permanent, note)
        VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)
-       ON CONFLICT(address) DO NOTHING`,
+       ON CONFLICT DO NOTHING`,
       address,
       shortId,
       owner.type,
@@ -274,7 +274,11 @@ export async function extendAddress(
 export async function revokeAddress(db: SqlExecutor, owner: OwnerRef, address: string): Promise<boolean> {
   const now = Math.floor(Date.now() / 1000);
   const result = await db.run(
-    `UPDATE addresses SET revoked = 1, revoked_at = ?
+    // short_id is released here rather than at cleanup: the id space is
+    // global and small (90k), and every short_id lookup already filters
+    // revoked = 0, so a torched row holding its id for the 24-48h grace
+    // period only lets create/torch churn exhaust the pool for everyone.
+    `UPDATE addresses SET revoked = 1, revoked_at = ?, short_id = NULL
      WHERE address = ? AND owner_type = ? AND owner_id = ? AND revoked = 0`,
     now,
     address,

@@ -61,9 +61,26 @@ export async function handleTelegramWebhookRequest(
       ) => createAddress(executor, owner, domain as string, ttl, permanent, note)
     : createMailtmAddress;
 
-  const reply = await handleUpdate(update, db, createAddressFn, config);
+  // Anything non-2xx makes Telegram redeliver the update, which would re-run
+  // a command whose side effects (rate-limit row, new address, mail.tm
+  // account, torch) are already committed. So neither a failed handler nor a
+  // reply Telegram refuses to deliver (bot blocked, no rights in a group) is
+  // allowed to escape as a 500.
+  let reply: Awaited<ReturnType<typeof handleUpdate>> = null;
+  try {
+    reply = await handleUpdate(update, db, createAddressFn, config);
+  } catch (err) {
+    console.error(`telegram command failed: ${err instanceof Error ? err.message : String(err)}`);
+    if (update.message?.chat) {
+      reply = { chatId: String(update.message.chat.id), text: "Something went wrong, try again in a moment." };
+    }
+  }
   if (reply) {
-    await sendMessage(env.TELEGRAM_BOT_TOKEN, reply.chatId, reply.text);
+    try {
+      await sendMessage(env.TELEGRAM_BOT_TOKEN, reply.chatId, reply.text);
+    } catch (err) {
+      console.warn(`telegram reply not delivered: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   // Telegram retries a webhook that doesn't return 200 promptly. The reply

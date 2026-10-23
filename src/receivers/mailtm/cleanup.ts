@@ -27,7 +27,7 @@ export async function runMailtmCleanup(db: SqlExecutor): Promise<void> {
     } catch (err) {
       // Don't let one account's cleanup failure (already deleted, mail.tm
       // briefly down, whatever) block the row from being dropped here too.
-      console.error(`mail.tm account cleanup failed for ${row.address}:`, err instanceof Error ? err.message : err);
+      console.error(`mail.tm account cleanup failed for #${row.short_id ?? "?"}:`, err instanceof Error ? err.message : err);
     }
   }
 
