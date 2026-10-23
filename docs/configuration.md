@@ -31,10 +31,12 @@ In `wrangler.jsonc` under `triggers.crons`, not variables:
 | Schedule | What it does |
 |---|---|
 | `0 3 * * *` | Daily: deletes expired and torched addresses, clears stale rate-limit rows, sends expiry reminders, and deletes the remote mailbox behind any dropped mail.tm-backed address, regardless of whether this Worker's own `DISPOSABLE_DOMAIN` is set. |
-| `*/1 * * * *` | Polls mail.tm for any mail.tm-backed address in the database, again regardless of this Worker's own `DISPOSABLE_DOMAIN`. Costs one cheap query and no-ops when there's nothing mail.tm-backed to find. |
+| `*/1 * * * *` | **Not in the default config. Add it for mail.tm mode.** Polls mail.tm for any mail.tm-backed address in the database, regardless of this Worker's own `DISPOSABLE_DOMAIN`. |
 
-Both run unconditionally rather than being gated on this Worker's own mode: a mail.tm-backed address can exist in the database even when this Worker itself is in domain mode, if another adapter (e.g. Telegram split onto its own Worker) independently created it in mail.tm mode. Gating on the wrong Worker's setting used to mean those addresses were silently never polled or cleaned up.
+The poll is opt-in because a cron trigger can't be conditional on a setting: listed by default, it would invoke the Worker every minute on domain deployments that never poll anything. If you run mail.tm mode, or split Telegram onto its own Worker running in mail.tm mode while this one uses a domain, add `"*/1 * * * *"` to `triggers.crons` in `wrangler.jsonc` and redeploy; without it mail.tm-backed addresses receive nothing. The daily cleanup still removes their remote mailboxes either way.
 
-The one minute floor on cron triggers is why mail.tm mode averages about 30 seconds to deliver.
+Once the poll is listed, `scheduled()` runs it unconditionally rather than gating on this Worker's own mode, for the same split-Worker reason.
+
+With the poll enabled, the one minute floor on cron triggers is why mail.tm mode averages about 30 seconds to deliver.
 
 Times are UTC. The daily one sends reminder messages, so its hour decides when people get notified.

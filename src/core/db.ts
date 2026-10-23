@@ -322,12 +322,17 @@ export async function markExpiryWarned(db: SqlExecutor, addresses: string[]): Pr
     return;
   }
   const now = Math.floor(Date.now() / 1000);
-  const placeholders = addresses.map(() => "?").join(", ");
-  await db.run(
-    `UPDATE addresses SET expiry_warned_at = ? WHERE address IN (${placeholders})`,
-    now,
-    ...addresses
-  );
+  // D1 allows 100 bound parameters per statement; one is the timestamp.
+  const CHUNK = 90;
+  for (let i = 0; i < addresses.length; i += CHUNK) {
+    const chunk = addresses.slice(i, i + CHUNK);
+    const placeholders = chunk.map(() => "?").join(", ");
+    await db.run(
+      `UPDATE addresses SET expiry_warned_at = ? WHERE address IN (${placeholders})`,
+      now,
+      ...chunk
+    );
+  }
 }
 
 // Absent row means off, so reminders are opt-in rather than something people

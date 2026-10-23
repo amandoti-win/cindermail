@@ -95,7 +95,16 @@ export default {
     const url = new URL(request.url);
 
     if (request.method === "GET" && url.pathname === "/") {
-      return new Response(renderCounterPage(pkg.version), { headers: { "Content-Type": "text/html; charset=utf-8" } });
+      return new Response(renderCounterPage(pkg.version), {
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "X-Content-Type-Options": "nosniff",
+          // The page is one inline <style>, one inline <script> and a
+          // same-origin fetch to /counters; nothing else is allowed to load.
+          "Content-Security-Policy":
+            "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+        },
+      });
     }
 
     if (request.method === "POST" && url.pathname === "/telegram-webhook") {

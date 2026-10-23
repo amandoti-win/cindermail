@@ -5,6 +5,9 @@ import { escapeMarkdown, htmlToText } from "./html-to-text.ts";
 const DISCORD_MESSAGE_CAP = 2000;
 const INLINE_BODY_CAP = 1500;
 const DISCORD_PAYLOAD_CAP = 25 * 1024 * 1024;
+// Discord rejects the whole message above 10 attachments, which would lose
+// the mail body along with the extras.
+const DISCORD_MAX_FILES = 10;
 
 // Email HTML is attacker-controlled: anyone who learns an address can send
 // to it, and the tag-matching in htmlToText scales quadratically with input
@@ -78,7 +81,7 @@ export function createDiscordAdapter(botToken: string): MailAdapter {
         }
 
         if (html && readableText.trim().length < SPARSE_TEXT_THRESHOLD && html.length > SUBSTANTIAL_HTML_THRESHOLD) {
-          notes.push("_(mostly images, original HTML attached; open it in a browser to view)_");
+          notes.push("_(mostly images, original HTML attached. It is the sender's markup, so only open it if you trust them)_");
           files.push({
             filename: "message.html",
             contentType: "text/html; charset=utf-8",
@@ -93,7 +96,7 @@ export function createDiscordAdapter(botToken: string): MailAdapter {
         let payloadBudget = DISCORD_PAYLOAD_CAP - files.reduce((sum, f) => sum + f.content.byteLength, 0);
         let skipped = 0;
         for (const a of mail.attachments) {
-          if (a.size <= payloadBudget) {
+          if (files.length < DISCORD_MAX_FILES && a.size <= payloadBudget) {
             files.push({ filename: a.filename, contentType: a.contentType, content: a.content });
             payloadBudget -= a.size;
           } else {
@@ -101,7 +104,7 @@ export function createDiscordAdapter(botToken: string): MailAdapter {
           }
         }
         if (skipped > 0) {
-          notes.push(`_(${skipped} attachment${skipped === 1 ? "" : "s"} too large, discarded)_`);
+          notes.push(`_(${skipped} attachment${skipped === 1 ? "" : "s"} over the size or count limit, discarded)_`);
         }
 
         // Assemble and cap exactly once, with every note already included.

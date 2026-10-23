@@ -72,7 +72,7 @@ export function createSlackAdapter(botToken: string): MailAdapter {
         }
 
         if (html && readableText.trim().length < SPARSE_TEXT_THRESHOLD && html.length > SUBSTANTIAL_HTML_THRESHOLD) {
-          notes.push("(mostly images, original HTML attached; open it in a browser to view)");
+          notes.push("(mostly images, original HTML attached. It is the sender's markup, so only open it if you trust them)");
           files.push({
             filename: "message.html",
             contentType: "text/html; charset=utf-8",

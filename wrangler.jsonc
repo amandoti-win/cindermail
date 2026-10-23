@@ -25,11 +25,13 @@
   "main": "src/worker.ts",
   "compatibility_date": "2024-09-23",
   "compatibility_flags": ["nodejs_compat"],
-  // Both default to false once any route is configured, and a workers.dev
-  // URL is worth keeping: it's the fallback when no custom domain is
-  // attached, and it's a usable Discord interactions endpoint on its own.
+  // workers_dev defaults to false once any route is configured, and a
+  // workers.dev URL is worth keeping: it's the fallback when no custom
+  // domain is attached, and it's a usable Discord interactions endpoint on
+  // its own. Preview URLs serve the same production bindings and secrets
+  // from extra hostnames, so they stay off.
   "workers_dev": true,
-  "preview_urls": true,
+  "preview_urls": false,
   "vars": {
     "ADAPTERS": "discord,telegram,slack"
   },
@@ -40,11 +42,12 @@
       "database_id": "80611409-6ad6-4226-a988-238e3d2e01fa"
     }
   ],
-  // Daily cleanup, plus the mail.tm poll. The poll returns immediately
-  // without touching D1 when DISPOSABLE_DOMAIN is set, so it costs nothing
-  // on a domain-based deployment.
+  // Daily cleanup only. The every-minute mail.tm poll is not listed because a
+  // cron trigger can't be conditional on DISPOSABLE_DOMAIN: listed here, it
+  // invokes the Worker 1,440 times a day on domain deployments that never
+  // need it. Running in mail.tm mode? Add "*/1 * * * *" to this array.
   "triggers": {
-    "crons": ["0 3 * * *", "*/1 * * * *"]
+    "crons": ["0 3 * * *"]
   },
   // Was dashboard-only originally and got turned off by a plain deploy, same
   // failure mode as the D1 binding. Declared here so that can't recur.

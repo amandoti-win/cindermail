@@ -17,6 +17,18 @@ function oneLine(value: string): string {
   return value.replace(/[\r\n\u0085\u2028\u2029]+/g, " ");
 }
 
+// Attachment names are sender-controlled and shown by the chat client. Bidi
+// overrides and control characters can disguise an extension, and path
+// separators have no business in a bare name.
+function safeFilename(name: string | null | undefined): string {
+  const cleaned = (name ?? "")
+    .replace(/[\p{Cc}\p{Cf}\u2028\u2029]/gu, "")
+    .replace(/[\\/]+/g, "_")
+    .trim()
+    .slice(0, 120);
+  return cleaned === "" ? "attachment" : cleaned;
+}
+
 export async function handleInboundEmail(
   message: InboundMessage,
   db: SqlExecutor,
@@ -45,7 +57,7 @@ export async function handleInboundEmail(
     text: parsed.text ?? "",
     html: parsed.html,
     attachments: parsed.attachments.map((a) => ({
-      filename: a.filename ?? "attachment",
+      filename: safeFilename(a.filename),
       contentType: a.mimeType,
       size: a.content instanceof ArrayBuffer ? a.content.byteLength : 0,
       content: a.content as ArrayBuffer,

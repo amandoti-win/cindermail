@@ -24,6 +24,23 @@ function usesOwnDomain(env: TelegramWebhookEnv): boolean {
   return !!env.DISPOSABLE_DOMAIN && env.DISPOSABLE_DOMAIN.trim() !== "";
 }
 
+// Digests are fixed length, so comparing them in constant time leaks neither
+// the secret's contents nor its length.
+async function secretsMatch(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder();
+  const [da, db] = await Promise.all([
+    crypto.subtle.digest("SHA-256", enc.encode(a)),
+    crypto.subtle.digest("SHA-256", enc.encode(b)),
+  ]);
+  const x = new Uint8Array(da);
+  const y = new Uint8Array(db);
+  let diff = 0;
+  for (let i = 0; i < x.length; i++) {
+    diff |= (x[i] as number) ^ (y[i] as number);
+  }
+  return diff === 0;
+}
+
 // Shared by both src/worker.ts (Telegram-only or Telegram+Discord on one
 // Worker) and src/telegram-worker.ts (Telegram split onto its own Worker,
 // for whoever wants Discord and Telegram bundle-isolated from each other).
@@ -38,7 +55,7 @@ export async function handleTelegramWebhookRequest(
   }
 
   const secretHeader = request.headers.get("X-Telegram-Bot-Api-Secret-Token");
-  if (secretHeader !== env.TELEGRAM_WEBHOOK_SECRET) {
+  if (!secretHeader || !(await secretsMatch(secretHeader, env.TELEGRAM_WEBHOOK_SECRET))) {
     return new Response("invalid secret token", { status: 401 });
   }
 

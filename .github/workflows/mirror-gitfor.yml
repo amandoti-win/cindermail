@@ -15,10 +15,15 @@ permissions:
 jobs:
   mirror:
     runs-on: ubuntu-latest
+    # GITFOR_TOKEN lives in this environment, not in repository secrets, so
+    # the deployment rules on it (restrict to main and v* tags) decide who
+    # can reach it.
+    environment: mirror
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Push to Gitfor
         env:
           GITFOR_TOKEN: ${{ secrets.GITFOR_TOKEN }}
