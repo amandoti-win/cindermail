@@ -74,3 +74,14 @@ export async function resolveAddressIdentifier(
   const row = await getAddressByShortId(db, owner, identifier);
   return row?.address ?? null;
 }
+
+// `/torch all` ends every live address the owner has. "all" can never collide
+// with a real argument: addresses contain "@" and short ids are 5 digits.
+export const TORCH_ALL_KEYWORD = "all";
+
+export function describeTorchAll(count: number): string {
+  if (count === 0) {
+    return "You have no active addresses to torch.";
+  }
+  return `Torched all ${count} address${count === 1 ? "" : "es"}.`;
+}

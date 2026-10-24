@@ -138,3 +138,11 @@ test("non-command messages are ignored entirely", async () => {
   const reply = await handleUpdate(telegramUpdate("1", "just chatting, not a command"), db, createFn, config);
   assert.equal(reply, null);
 });
+
+test("/torch all", async () => {
+  const { db } = testDb();
+  await createAddress(db, telegramOwner("7"), "ex.com", 86400, false, null);
+  await createAddress(db, telegramOwner("7"), "ex.com", 86400, true, null);
+  assert.equal(telegramReplyText(await run(db, "7", "/torch all")), "Torched all 2 addresses.");
+  assert.equal(telegramReplyText(await run(db, "7", "/torch ALL")), "You have no active addresses to torch.");
+});

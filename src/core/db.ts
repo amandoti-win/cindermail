@@ -291,6 +291,26 @@ export async function revokeAddress(db: SqlExecutor, owner: OwnerRef, address: s
   return result.changes > 0;
 }
 
+// Same effect as revokeAddress on every address /list would show, in one
+// statement. Limited to live rows (not already revoked, not already expired)
+// so the count reported back matches what the owner saw, and expired rows
+// still waiting on cleanup aren't counted as torched.
+export async function revokeAllAddresses(db: SqlExecutor, owner: OwnerRef): Promise<number> {
+  const now = Math.floor(Date.now() / 1000);
+  const result = await db.run(
+    `UPDATE addresses SET revoked = 1, revoked_at = ?, short_id = NULL
+     WHERE owner_type = ? AND owner_id = ? AND revoked = 0 AND (permanent = 1 OR expires_at > ?)`,
+    now,
+    owner.type,
+    owner.id,
+    now
+  );
+  if (result.changes > 0) {
+    await incrementTorchedCounter(db, result.changes);
+  }
+  return result.changes;
+}
+
 // Addresses due an expiry reminder: expiring inside the given window, still
 // live, not already warned, and belonging to someone who opted in. The join
 // is what enforces opt-in, since an owner with no preferences row can't
@@ -402,9 +422,9 @@ export async function deleteStaleRateLimits(db: SqlExecutor, olderThanSeconds: n
 // either -- SqlExecutor has no multi-statement transaction primitive -- so
 // a crash between the two statements can undercount by one. Fine for a
 // vanity counter, not worth adding transaction plumbing for.
-async function bumpCounter(db: SqlExecutor, column: "created" | "torched" | "received"): Promise<void> {
+async function bumpCounter(db: SqlExecutor, column: "created" | "torched" | "received", by = 1): Promise<void> {
   try {
-    await db.run(`UPDATE counters SET ${column} = ${column} + 1 WHERE id = 1`);
+    await db.run(`UPDATE counters SET ${column} = ${column} + ? WHERE id = 1`, by);
   } catch (err) {
     console.warn(`counter "${column}" not incremented: ${err instanceof Error ? err.message : String(err)}`);
   }
@@ -414,8 +434,8 @@ async function incrementCreatedCounter(db: SqlExecutor): Promise<void> {
   await bumpCounter(db, "created");
 }
 
-async function incrementTorchedCounter(db: SqlExecutor): Promise<void> {
-  await bumpCounter(db, "torched");
+async function incrementTorchedCounter(db: SqlExecutor, by = 1): Promise<void> {
+  await bumpCounter(db, "torched", by);
 }
 
 export async function incrementReceivedCounter(db: SqlExecutor): Promise<void> {

@@ -236,3 +236,27 @@ test("unknown commands are rejected", async () => {
   const { db } = testDb();
   assert.match(replyText(await run(db, "n", "definitely-not-a-command")), /Unknown command/);
 });
+
+test("/torch all", async (t) => {
+  await t.test("torches every live address for the caller only", async () => {
+    const { db } = testDb();
+    await createAddress(db, owner("n"), "ex.com", DAY, false, null);
+    await createAddress(db, owner("n"), "ex.com", DAY, true, null);
+    await createAddress(db, owner("other"), "ex.com", DAY, false, null);
+
+    assert.equal(
+      replyText(await run(db, "n", "torch", [{ name: "address_or_id", value: " ALL " }])),
+      "Torched all 2 addresses."
+    );
+    assert.match(replyText(await run(db, "n", "list")), /^0\//);
+    assert.match(replyText(await run(db, "other", "list")), /^1\//);
+  });
+
+  await t.test("says so when there is nothing to torch", async () => {
+    const { db } = testDb();
+    assert.equal(
+      replyText(await run(db, "n", "torch", [{ name: "address_or_id", value: "all" }])),
+      "You have no active addresses to torch."
+    );
+  });
+});

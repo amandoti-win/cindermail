@@ -54,7 +54,7 @@ The wizard asks the same questions and writes the same config, plus it offers to
 | `/extend <address/id> [expiry]` | Change when one expires. `expiry: 0` makes it permanent. |
 | `/note <address/id> [note]` | Label one. Blank clears it. |
 | `/remind [on/off]` | Opt in to a message a day before an address expires. |
-| `/torch <address/id>` | Kill it. |
+| `/torch <address/id\|all>` | Kill it, or every active address at once with `all`. |
 
 `/list` shows a short 5-digit id next to each address (`#48213`). `/extend`, `/note`, and `/torch` all accept that id instead: just the digits, no `#`.
 

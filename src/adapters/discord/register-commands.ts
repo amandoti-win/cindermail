@@ -106,7 +106,7 @@ const commands = [
       {
         type: 3,
         name: "address_or_id",
-        description: "The address, or its short id from /list (digits only, no #)",
+        description: "The address, its short id from /list (digits only, no #), or all to torch everything",
         required: true,
       },
     ],

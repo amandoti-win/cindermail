@@ -8,6 +8,7 @@ import {
   getCounters,
   listActiveAddresses,
   revokeAddress,
+  revokeAllAddresses,
 } from "../src/core/db.ts";
 import { resolveAddressIdentifier } from "../src/core/commands.ts";
 import { createDispatcher } from "../src/core/dispatch.ts";
@@ -250,4 +251,20 @@ test("schema.sql matches the migration chain", () => {
     assert.deepEqual(columns(upgraded, table), columns(fresh, table), `${table} differs`);
   }
   assert.deepEqual(upgraded.prepare("SELECT * FROM counters").all(), fresh.prepare("SELECT * FROM counters").all());
+});
+
+test("torch all", async (t) => {
+  await t.test("ends every live address, releases their short ids, and counts them", async () => {
+    const { db } = testDb();
+    await createAddress(db, owner("u1"), "ex.com", DAY, false, null);
+    await createAddress(db, owner("u1"), "ex.com", DAY, true, null);
+    await createAddress(db, owner("u1"), "ex.com", -DAY, false, null); // already expired
+    await createAddress(db, owner("u2"), "ex.com", DAY, false, null);
+
+    assert.equal(await revokeAllAddresses(db, owner("u1")), 2);
+    assert.equal((await listActiveAddresses(db, owner("u1"))).length, 0);
+    assert.equal((await listActiveAddresses(db, owner("u2"))).length, 1, "another owner is untouched");
+    assert.equal((await getCounters(db)).torched, 2, "the expired one isn't counted");
+    assert.equal(await revokeAllAddresses(db, owner("u1")), 0, "nothing left the second time");
+  });
 });

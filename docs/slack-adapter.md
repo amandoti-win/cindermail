@@ -56,8 +56,8 @@ features:
       should_escape: false
     - command: /cm-torch
       url: https://YOUR-WORKER-URL/slack/commands
-      description: Kill an address
-      usage_hint: "<address/id>"
+      description: Kill an address, or all of them
+      usage_hint: "<address/id|all>"
       should_escape: false
     - command: /cm-remind
       url: https://YOUR-WORKER-URL/slack/commands
@@ -144,7 +144,7 @@ Every reply uses Slack's `ephemeral` response type: visible only to whoever ran 
 | `/cm-list` | Your addresses, notes, and expiry. | 15 per 60s |
 | `/cm-extend <address/id> [expiry]` | Changes when an address expires. | 15 per 60s |
 | `/cm-note <address/id> [note]` | Labels an address. Blank clears it. | 15 per 60s |
-| `/cm-torch <address/id>` | Revokes an address. | 15 per 60s |
+| `/cm-torch <address/id\|all>` | Revokes an address, or every active address with `all`. | 15 per 60s |
 | `/cm-remind [on\|off]` | Expiry reminder DMs. Blank shows the current setting. | 15 per 60s |
 
 `/cm-list` shows a short 5-digit id next to each address (`#48213`). `/cm-extend`, `/cm-note`, and `/cm-torch` all accept that id there too: just the digits, no `#`.
