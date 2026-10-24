@@ -73,12 +73,9 @@ The Worker root serves a status page with running totals, also available as JSON
 
 ## Limits
 
-- 5 active addresses per owner, configurable.
 - Message bodies cap at 1500 characters inline on Discord, 3500 on Telegram and Slack; longer is attached as `message.txt`.
 - Inbound HTML caps at 256KB before parsing. Parsing cost scales quadratically, and anyone who learns an address can send to it.
 - Attachments forward up to 25MB combined per email on Discord, or 50MB per file on Telegram and Slack. Anything over budget is dropped with a note, not the whole batch.
-
-Code layout and tests: [docs/architecture.md](docs/architecture.md). Every setting: [docs/configuration.md](docs/configuration.md).
   
 ## AI disclosure
 
