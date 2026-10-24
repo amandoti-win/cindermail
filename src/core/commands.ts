@@ -86,33 +86,51 @@ export function describeTorchAll(count: number): string {
   return `Torched all ${count} address${count === 1 ? "" : "es"}.`;
 }
 
-export type TorchAllStep = "preview" | "confirmed";
+// What the confirm/cancel buttons carry back. Discord's custom_id, Telegram's
+// callback_data and Slack's button value are all opaque strings the platform
+// echoes on click, so the same two shapes work everywhere: "confirm:<count>"
+// and "cancel". The count is how many addresses the preview showed.
+export const TORCH_ALL_CONFIRM = "confirm";
+export const TORCH_ALL_CANCEL = "cancel";
 
-// `all` alone only previews; it takes the exact second word `confirm` to act,
-// so a stray "all", a typo, or "all confirmed" can never wipe anything.
-// Stateless on purpose: nothing to store or expire between the two messages.
-export function parseTorchAll(input: string): TorchAllStep | null {
-  const [first, second, ...rest] = input.trim().toLowerCase().split(/\s+/);
-  if (first !== TORCH_ALL_KEYWORD) {
-    return null;
-  }
-  return second === "confirm" && rest.length === 0 ? "confirmed" : "preview";
+export interface TorchAllPreview {
+  text: string;
+  // 0 means there is nothing to torch, so no buttons should be offered.
+  count: number;
 }
 
-// confirmCommand is the exact text to send next, in whichever syntax the
-// calling platform uses.
-export async function runTorchAll(
-  db: SqlExecutor,
-  owner: OwnerRef,
-  step: TorchAllStep,
-  confirmCommand: string
-): Promise<string> {
-  if (step === "confirmed") {
-    return describeTorchAll(await revokeAllAddresses(db, owner));
-  }
+// `/torch all` itself never deletes anything: it only reports how many live
+// addresses a confirm would end.
+export async function previewTorchAll(db: SqlExecutor, owner: OwnerRef): Promise<TorchAllPreview> {
   const count = await countActiveAddresses(db, owner);
   if (count === 0) {
-    return describeTorchAll(0);
+    return { text: describeTorchAll(0), count };
   }
-  return `This will torch all ${count} address${count === 1 ? "" : "es"} and can't be undone. To go ahead, send: ${confirmCommand}`;
+  return {
+    text: `This will torch all ${count} address${count === 1 ? "" : "es"} and can't be undone.`,
+    count,
+  };
+}
+
+export function torchAllConfirmValue(count: number): string {
+  return `${TORCH_ALL_CONFIRM}:${count}`;
+}
+
+// A click is always acted on for whoever clicked, never for an owner named
+// in the button, so a forwarded or replayed button can only ever torch the
+// clicker's own addresses. The embedded count is a staleness check: if the
+// addresses changed between the preview and the click, nothing is torched
+// and the owner is sent back to review again.
+export async function resolveTorchAllClick(db: SqlExecutor, owner: OwnerRef, value: string): Promise<string> {
+  if (value === TORCH_ALL_CANCEL) {
+    return "Cancelled. Nothing was torched.";
+  }
+  const [action, expected] = value.split(":");
+  if (action !== TORCH_ALL_CONFIRM || !/^\d+$/.test(expected ?? "")) {
+    return "That button isn't valid anymore.";
+  }
+  if ((await countActiveAddresses(db, owner)) !== Number(expected)) {
+    return "Your addresses changed since this was shown, so nothing was torched. Run torch all again to review.";
+  }
+  return describeTorchAll(await revokeAllAddresses(db, owner));
 }

@@ -16,7 +16,7 @@ Go to [api.slack.com/apps](https://api.slack.com/apps) â†’ **Create New App** â†
 
 ![Slack's "Create new app" dialog, with "From a manifest" selected as the starting point](images/slack-create-app.png)
 
-Paste this in (YAML tab), replacing `YOUR-WORKER-URL` (six occurrences) with your actual Worker URL first: one find-and-replace, not six manual edits:
+Paste this in (YAML tab), replacing `YOUR-WORKER-URL` (seven occurrences) with your actual Worker URL first: one find-and-replace, not six manual edits:
 
 ```yaml
 display_information:
@@ -57,7 +57,7 @@ features:
     - command: /cm-torch
       url: https://YOUR-WORKER-URL/slack/commands
       description: Kill an address, or all of them
-      usage_hint: "<address/id|all [confirm]>"
+      usage_hint: "<address/id|all>"
       should_escape: false
     - command: /cm-remind
       url: https://YOUR-WORKER-URL/slack/commands
@@ -66,6 +66,9 @@ features:
       should_escape: false
 
 settings:
+  interactivity:
+    is_enabled: true
+    request_url: https://YOUR-WORKER-URL/slack/interactions
   org_deploy_enabled: false
   socket_mode_enabled: false
   token_rotation_enabled: false
@@ -118,7 +121,7 @@ Add `"slack"` to `ADAPTERS` in `wrangler.jsonc`'s `vars` (comma-separated with w
 npx wrangler deploy
 ```
 
-Your Request URL is `/slack/commands` on that same Worker, the same one for all six commands, since Slack sends the command name in the payload rather than needing a separate endpoint per command.
+Your Request URL is `/slack/commands` on that same Worker, the same one for all six commands, since Slack sends the command name in the payload rather than needing a separate endpoint per command. `/slack/interactions` is the second URL, used only for the Confirm and Cancel buttons that `/cm-torch all` shows. If you set the app up before that existed, add the `interactivity` block from the manifest above (or turn on **Interactivity & Shortcuts** and set its Request URL), otherwise those buttons will fail when clicked.
 
 ## 7. Try it
 
@@ -144,7 +147,7 @@ Every reply uses Slack's `ephemeral` response type: visible only to whoever ran 
 | `/cm-list` | Your addresses, notes, and expiry. | 15 per 60s |
 | `/cm-extend <address/id> [expiry]` | Changes when an address expires. | 15 per 60s |
 | `/cm-note <address/id> [note]` | Labels an address. Blank clears it. | 15 per 60s |
-| `/cm-torch <address/id\|all>` | Revokes an address. `all` previews, `all confirm` revokes every active address. | 15 per 60s |
+| `/cm-torch <address/id\|all>` | Revokes an address. `all` asks you to confirm with a button, then revokes every active address. | 15 per 60s |
 | `/cm-remind [on\|off]` | Expiry reminder DMs. Blank shows the current setting. | 15 per 60s |
 
 `/cm-list` shows a short 5-digit id next to each address (`#48213`). `/cm-extend`, `/cm-note`, and `/cm-torch` all accept that id there too: just the digits, no `#`.

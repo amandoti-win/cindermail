@@ -247,33 +247,79 @@ test("/torch all", async (t) => {
   };
   const torch = (db: SqlExecutor, user: string, value: string) =>
     run(db, user, "torch", [{ name: "address_or_id", value }]);
+  const click = (db: SqlExecutor, user: string, customId: string) =>
+    handleInteraction(
+      { type: 3, member: { user: { id: user } }, data: { name: "", custom_id: customId } },
+      db,
+      createFn,
+      config
+    ) as Promise<{ type: number; data: { content: string; components?: unknown[]; flags?: number } }>;
+  const buttons = (reply: unknown) =>
+    (reply as { data: { components: { components: { label: string; custom_id: string }[] }[] } }).data.components[0]
+      ?.components ?? [];
 
-  await t.test("all alone only previews and deletes nothing", async () => {
+  await t.test("shows an ephemeral confirm/cancel prompt and deletes nothing", async () => {
     const db = await setup();
-    const reply = replyText(await torch(db, "n", " ALL "));
-    assert.match(reply, /This will torch all 2 addresses and can't be undone/);
-    assert.match(reply, /\/torch address_or_id:all confirm/);
+    const reply = await torch(db, "n", " ALL ");
+    assert.equal(replyText(reply), "This will torch all 2 addresses and can't be undone.");
+    assert.equal((reply as { data: { flags: number } }).data.flags, 64);
+    assert.deepEqual(
+      buttons(reply).map((b) => [b.label, b.custom_id]),
+      [
+        ["Confirm", "torch_all:confirm:2"],
+        ["Cancel", "torch_all:cancel"],
+      ]
+    );
     assert.match(replyText(await run(db, "n", "list")), /^2\//);
   });
 
-  await t.test("all confirm torches every live address for the caller only", async () => {
+  await t.test("offers no buttons when there is nothing to torch", async () => {
+    const { db } = testDb();
+    const reply = await torch(db, "n", "all");
+    assert.equal(replyText(reply), "You have no active addresses to torch.");
+    assert.equal((reply as { data: { components?: unknown } }).data.components, undefined);
+  });
+
+  await t.test("confirm torches the clicker's addresses and removes the buttons", async () => {
     const db = await setup();
-    assert.equal(replyText(await torch(db, "n", "all confirm")), "Torched all 2 addresses.");
+    const reply = await click(db, "n", "torch_all:confirm:2");
+    assert.equal(reply.type, 7);
+    assert.equal(reply.data.content, "Torched all 2 addresses.");
+    assert.deepEqual(reply.data.components, []);
     assert.match(replyText(await run(db, "n", "list")), /^0\//);
     assert.match(replyText(await run(db, "other", "list")), /^1\//);
   });
 
-  await t.test("anything other than the exact word confirm stays a preview", async () => {
+  await t.test("cancel torches nothing", async () => {
     const db = await setup();
-    for (const value of ["all confirmed", "all yes", "all confirm now", "all  confirm?"]) {
-      assert.match(replyText(await torch(db, "n", value)), /This will torch/, value);
-    }
+    const reply = await click(db, "n", "torch_all:cancel");
+    assert.equal(reply.data.content, "Cancelled. Nothing was torched.");
+    assert.deepEqual(reply.data.components, []);
     assert.match(replyText(await run(db, "n", "list")), /^2\//);
   });
 
-  await t.test("says so when there is nothing to torch, with or without confirm", async () => {
-    const { db } = testDb();
-    assert.equal(replyText(await torch(db, "n", "all")), "You have no active addresses to torch.");
-    assert.equal(replyText(await torch(db, "n", "all confirm")), "You have no active addresses to torch.");
+  await t.test("a stale prompt torches nothing once the addresses have changed", async () => {
+    const db = await setup();
+    await createAddress(db, owner("n"), "ex.com", DAY, false, null);
+    const reply = await click(db, "n", "torch_all:confirm:2");
+    assert.match(reply.data.content, /changed since this was shown, so nothing was torched/);
+    assert.match(replyText(await run(db, "n", "list")), /^3\//);
+  });
+
+  await t.test("a click only ever affects whoever clicked", async () => {
+    const db = await setup();
+    // Someone else pressing a button meant for "n" torches only their own address.
+    const reply = await click(db, "other", "torch_all:confirm:1");
+    assert.equal(reply.data.content, "Torched all 1 address.");
+    assert.match(replyText(await run(db, "n", "list")), /^2\//);
+  });
+
+  await t.test("malformed or unknown buttons do nothing", async () => {
+    const db = await setup();
+    for (const id of ["torch_all:confirm:abc", "torch_all:confirm", "torch_all:nope:2", "something_else:2", ""]) {
+      const reply = await click(db, "n", id);
+      assert.match(reply.data.content, /isn't valid anymore/, id);
+    }
+    assert.match(replyText(await run(db, "n", "list")), /^2\//);
   });
 });

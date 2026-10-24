@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildCommandConfig } from "../src/core/config.ts";
-import { handleUpdate } from "../src/adapters/telegram/commands.ts";
+import { handleCallbackQuery, handleUpdate } from "../src/adapters/telegram/commands.ts";
 import { createAddress, getAddress } from "../src/core/db.ts";
 import type { SqlExecutor } from "../src/core/storage.ts";
 import type { OwnerRef } from "../src/core/types.ts";
@@ -139,17 +139,53 @@ test("non-command messages are ignored entirely", async () => {
   assert.equal(reply, null);
 });
 
-test("/torch all", async () => {
-  const { db } = testDb();
-  await createAddress(db, telegramOwner("7"), "ex.com", 86400, false, null);
-  await createAddress(db, telegramOwner("7"), "ex.com", 86400, true, null);
+test("/torch all", async (t) => {
+  const setup = async () => {
+    const { db } = testDb();
+    await createAddress(db, telegramOwner("7"), "ex.com", 86400, false, null);
+    await createAddress(db, telegramOwner("7"), "ex.com", 86400, true, null);
+    return db;
+  };
+  const tap = (db: SqlExecutor, data: string, chatType = "private", userId = 7) =>
+    handleCallbackQuery(
+      { callback_query: { id: "cb1", from: { id: userId }, data, message: { message_id: 42, chat: { id: userId, type: chatType } } } },
+      db,
+      config
+    );
 
-  const preview = telegramReplyText(await run(db, "7", "/torch all"));
-  assert.match(preview, /This will torch all 2 addresses and can't be undone/);
-  assert.match(preview, /\/torch all confirm/);
-  assert.match(telegramReplyText(await run(db, "7", "/torch ALL confirmed")), /This will torch/);
-  assert.match(telegramReplyText(await run(db, "7", "/list")), /^2\//);
+  await t.test("shows a confirm/cancel keyboard and deletes nothing", async () => {
+    const db = await setup();
+    const reply = await run(db, "7", "/torch ALL");
+    assert.equal(reply?.text, "This will torch all 2 addresses and can't be undone.");
+    assert.deepEqual(reply?.buttons, [
+      { text: "Confirm", data: "torch_all:confirm:2" },
+      { text: "Cancel", data: "torch_all:cancel" },
+    ]);
+    assert.match(telegramReplyText(await run(db, "7", "/list")), /^2\//);
+  });
 
-  assert.equal(telegramReplyText(await run(db, "7", "/torch all confirm")), "Torched all 2 addresses.");
-  assert.equal(telegramReplyText(await run(db, "7", "/torch all confirm")), "You have no active addresses to torch.");
+  await t.test("confirm torches them and says what it did on the same message", async () => {
+    const db = await setup();
+    const result = await tap(db, "torch_all:confirm:2");
+    assert.deepEqual(result, { callbackId: "cb1", chatId: "7", messageId: 42, text: "Torched all 2 addresses." });
+    assert.match(telegramReplyText(await run(db, "7", "/list")), /^0\//);
+  });
+
+  await t.test("cancel, stale, and invalid taps torch nothing", async () => {
+    const db = await setup();
+    assert.equal((await tap(db, "torch_all:cancel"))?.text, "Cancelled. Nothing was torched.");
+    await createAddress(db, telegramOwner("7"), "ex.com", 86400, false, null);
+    assert.match((await tap(db, "torch_all:confirm:2"))?.text ?? "", /changed since this was shown/);
+    assert.match((await tap(db, "torch_all:confirm:x"))?.text ?? "", /isn't valid anymore/);
+    assert.match((await tap(db, "elsewhere:1"))?.text ?? "", /isn't valid anymore/);
+    assert.match(telegramReplyText(await run(db, "7", "/list")), /^3\//);
+  });
+
+  await t.test("only acts in a private chat, and for whoever tapped", async () => {
+    const db = await setup();
+    assert.equal(await tap(db, "torch_all:confirm:2", "supergroup"), null);
+    // User 8 has nothing, so a button meant for user 7 can't make them torch anything of 7's.
+    assert.match((await tap(db, "torch_all:confirm:2", "private", 8))?.text ?? "", /changed since this was shown/);
+    assert.match(telegramReplyText(await run(db, "7", "/list")), /^2\//);
+  });
 });

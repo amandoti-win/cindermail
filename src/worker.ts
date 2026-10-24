@@ -3,7 +3,7 @@ import { createDiscordAdapter } from "./adapters/discord/index.ts";
 import { createTelegramAdapter } from "./adapters/telegram/index.ts";
 import { handleTelegramWebhookRequest } from "./adapters/telegram/webhook.ts";
 import { createSlackAdapter } from "./adapters/slack/index.ts";
-import { handleSlackCommandRequest } from "./adapters/slack/webhook.ts";
+import { handleSlackCommandRequest, handleSlackInteractionRequest } from "./adapters/slack/webhook.ts";
 import { buildCommandConfig } from "./core/config.ts";
 import { handleInteraction, type DiscordInteraction } from "./adapters/discord/interactions.ts";
 import { backfillShortIds, createAddress, getCounters, type Counters } from "./core/db.ts";
@@ -115,6 +115,10 @@ export default {
       return handleSlackCommandRequest(request, env, createD1Executor(env.DB));
     }
 
+    if (request.method === "POST" && url.pathname === "/slack/interactions") {
+      return handleSlackInteractionRequest(request, env, createD1Executor(env.DB));
+    }
+
     if (request.method === "GET" && url.pathname === "/counters") {
       const now = Date.now();
       if (!countersMemo || now - countersMemo.at > COUNTERS_TTL_MS) {
@@ -162,7 +166,7 @@ export default {
         return Response.json({ type: 1 });
       }
 
-      if (interaction.type === 2) {
+      if (interaction.type === 2 || interaction.type === 3) {
         const db = createD1Executor(env.DB);
         const config = buildCommandConfig(env as Record<string, string | undefined>);
         const domain = env.DISPOSABLE_DOMAIN;

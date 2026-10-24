@@ -19,11 +19,15 @@ import {
   MAX_NOTE_LENGTH,
   parseExpiry,
   resolveAddressIdentifier,
-  parseTorchAll,
-  runTorchAll,
+  previewTorchAll,
+  resolveTorchAllClick,
+  TORCH_ALL_CANCEL,
+  TORCH_ALL_KEYWORD,
+  torchAllConfirmValue,
 } from "../../core/commands.ts";
 
 const RATE_LIMIT_MESSAGE = "Slow down a moment, then try again.";
+const TORCH_ALL_PREFIX = "torch_all:";
 const NOT_PRIVATE_MESSAGE = "Message me directly (not in a group) to manage your addresses.";
 
 export interface TelegramUpdate {
@@ -32,10 +36,25 @@ export interface TelegramUpdate {
     chat: { id: number; type: string };
     from?: { id: number };
   };
+  // A tap on an inline-keyboard button of a message this bot sent.
+  callback_query?: {
+    id: string;
+    from: { id: number };
+    data?: string;
+    message?: { message_id: number; chat: { id: number; type: string } };
+  };
 }
 
 export interface TelegramReply {
   chatId: string;
+  text: string;
+  buttons?: { text: string; data: string }[];
+}
+
+export interface TelegramCallbackResult {
+  callbackId: string;
+  chatId: string;
+  messageId: number;
   text: string;
 }
 
@@ -126,7 +145,7 @@ export async function handleUpdate(
     case "extend":
       return { chatId, text: await handleExtend(db, owner, config, remainder) };
     case "torch":
-      return { chatId, text: await handleTorch(db, owner, remainder) };
+      return { chatId, ...(await handleTorch(db, owner, remainder)) };
     case "remind":
       return { chatId, text: await handleRemind(db, owner, remainder) };
     default:
@@ -230,24 +249,72 @@ async function handleExtend(
   return `${address} now expires in ${days} day${days === 1 ? "" : "s"}.`;
 }
 
-async function handleTorch(db: SqlExecutor, owner: OwnerRef, remainder: string): Promise<string> {
+async function handleTorch(
+  db: SqlExecutor,
+  owner: OwnerRef,
+  remainder: string
+): Promise<{ text: string; buttons?: { text: string; data: string }[] }> {
   const addressOrId = remainder.trim().toLowerCase();
   if (!addressOrId) {
-    return "Usage: /torch <address/id|all [confirm]>";
+    return { text: "Usage: /torch <address/id|all>" };
   }
-  const torchAll = parseTorchAll(addressOrId);
-  if (torchAll) {
-    return await runTorchAll(db, owner, torchAll, "/torch all confirm");
+  if (addressOrId === TORCH_ALL_KEYWORD) {
+    const preview = await previewTorchAll(db, owner);
+    if (preview.count === 0) {
+      return { text: preview.text };
+    }
+    return {
+      text: preview.text,
+      buttons: [
+        { text: "Confirm", data: `${TORCH_ALL_PREFIX}${torchAllConfirmValue(preview.count)}` },
+        { text: "Cancel", data: `${TORCH_ALL_PREFIX}${TORCH_ALL_CANCEL}` },
+      ],
+    };
   }
   const address = await resolveAddressIdentifier(db, owner, addressOrId);
   if (!address) {
-    return "Not found or not yours.";
+    return { text: "Not found or not yours." };
   }
   const updated = await revokeAddress(db, owner, address);
   if (!updated) {
-    return "Not found or not yours.";
+    return { text: "Not found or not yours." };
   }
-  return `Torched ${address}.`;
+  return { text: `Torched ${address}.` };
+}
+
+// A button tap, acted on for whoever tapped (Telegram sets `from`, not the
+// button), and only in a private chat like every other command here.
+export async function handleCallbackQuery(
+  update: TelegramUpdate,
+  db: SqlExecutor,
+  config: CommandConfig
+): Promise<TelegramCallbackResult | null> {
+  const query = update.callback_query;
+  const message = query?.message;
+  if (!query || !message || message.chat.type !== "private") {
+    return null;
+  }
+  const result = (text: string): TelegramCallbackResult => ({
+    callbackId: query.id,
+    chatId: String(message.chat.id),
+    messageId: message.message_id,
+    text,
+  });
+
+  const data = query.data ?? "";
+  if (!data.startsWith(TORCH_ALL_PREFIX)) {
+    return result("That button isn't valid anymore.");
+  }
+  const owner: OwnerRef = { type: "telegram", id: String(query.from.id) };
+  const value = data.slice(TORCH_ALL_PREFIX.length);
+
+  if (value !== TORCH_ALL_CANCEL) {
+    const limit = config.rateLimits.torch;
+    if (limit && !(await checkAndIncrement(db, owner.type, owner.id, "torch", limit.windowSeconds, limit.maxCount))) {
+      return result(RATE_LIMIT_MESSAGE);
+    }
+  }
+  return result(await resolveTorchAllClick(db, owner, value));
 }
 
 async function handleRemind(db: SqlExecutor, owner: OwnerRef, remainder: string): Promise<string> {

@@ -97,7 +97,7 @@ Replies are ephemeral: only the person who ran the command sees them.
 | `/list` | Your addresses, notes, and expiry. | 15 per 60s |
 | `/extend <address/id> [expiry]` | Changes when an address expires. | 15 per 60s |
 | `/note <address/id> [note]` | Labels an address. Blank clears it. | 15 per 60s |
-| `/torch <address/id\|all>` | Revokes an address. `all` previews, `all confirm` revokes every active address. | 15 per 60s |
+| `/torch <address/id\|all>` | Revokes an address. `all` asks you to confirm with a button, then revokes every active address. | 15 per 60s |
 | `/remind [enabled]` | Expiry reminder DMs. Blank shows the setting. | 15 per 60s |
 
 `/list` shows a short 5-digit id next to each address (`#48213`). `/extend`, `/note`, and `/torch` all accept that id there too: just the digits, no `#`.

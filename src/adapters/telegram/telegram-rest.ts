@@ -26,10 +26,20 @@ async function telegramFetch(botToken: string, method: string, init: RequestInit
   return response;
 }
 
+export interface TelegramButton {
+  text: string;
+  data: string;
+}
+
 // Telegram has no separate "create a DM channel" step the way Discord does:
 // a chat_id is just the user's numeric id, already known from whatever
 // update (a command message) established the owner in the first place.
-export async function sendMessage(botToken: string, chatId: string, text: string): Promise<void> {
+export async function sendMessage(
+  botToken: string,
+  chatId: string,
+  text: string,
+  buttons?: TelegramButton[]
+): Promise<void> {
   await telegramFetch(botToken, "sendMessage", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -37,7 +47,38 @@ export async function sendMessage(botToken: string, chatId: string, text: string
     // and Telegram's MarkdownV2 requires escaping a long list of characters
     // that plain text sidesteps entirely -- same tradeoff Discord's adapter
     // makes by escaping rather than risking a missed character.
-    body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true }),
+    body: JSON.stringify({
+      chat_id: chatId,
+      text,
+      disable_web_page_preview: true,
+      ...(buttons && {
+        reply_markup: { inline_keyboard: [buttons.map((b) => ({ text: b.text, callback_data: b.data }))] },
+      }),
+    }),
+  });
+}
+
+// Telegram shows a spinner on a tapped button until this is called.
+export async function answerCallbackQuery(botToken: string, callbackQueryId: string): Promise<void> {
+  await telegramFetch(botToken, "answerCallbackQuery", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ callback_query_id: callbackQueryId }),
+  });
+}
+
+// Replaces the message the button was on. Sending no reply_markup is what
+// removes the keyboard, so it can't be tapped a second time.
+export async function editMessageText(
+  botToken: string,
+  chatId: string,
+  messageId: number,
+  text: string
+): Promise<void> {
+  await telegramFetch(botToken, "editMessageText", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, message_id: messageId, text }),
   });
 }
 

@@ -20,8 +20,11 @@ import {
   MAX_NOTE_LENGTH,
   parseExpiry,
   resolveAddressIdentifier,
-  parseTorchAll,
-  runTorchAll,
+  previewTorchAll,
+  resolveTorchAllClick,
+  TORCH_ALL_CANCEL,
+  TORCH_ALL_KEYWORD,
+  torchAllConfirmValue,
 } from "../../core/commands.ts";
 
 export type { CreateAddressFn } from "../../core/commands.ts";
@@ -30,6 +33,7 @@ export { MAX_EXPIRY_DAYS, MAX_NOTE_LENGTH } from "../../core/commands.ts";
 const EPHEMERAL = 64;
 
 const RATE_LIMIT_MESSAGE = "Slow down a moment, then try again.";
+const TORCH_ALL_PREFIX = "torch_all:";
 
 interface DiscordInteractionOption {
   name: string;
@@ -43,6 +47,8 @@ export interface DiscordInteraction {
   data?: {
     name: string;
     options?: DiscordInteractionOption[];
+    // Present on a button click (type 3) instead of a command name.
+    custom_id?: string;
   };
 }
 
@@ -104,6 +110,14 @@ export async function handleInteraction(
     return ephemeralReply("Could not identify the invoking user.");
   }
   const owner: OwnerRef = { type: "discord", id: userId };
+
+  // Type 3 is a button click on a message this bot sent earlier. Acted on for
+  // whoever clicked (Discord sets that id, not the button), so a button can
+  // only ever torch its clicker's own addresses.
+  if (interaction.type === 3) {
+    return handleButtonClick(interaction.data?.custom_id ?? "", db, owner, config);
+  }
+
   const commandName = interaction.data?.name;
 
   const limit = commandName ? config.rateLimits[commandName] : undefined;
@@ -150,6 +164,24 @@ export async function handleInteraction(
     default:
       return ephemeralReply("Unknown command.");
   }
+}
+
+// Type 7 edits the message the button was on in place, and dropping the
+// components is what stops it being clicked a second time.
+async function handleButtonClick(customId: string, db: SqlExecutor, owner: OwnerRef, config: CommandConfig) {
+  if (!customId.startsWith(TORCH_ALL_PREFIX)) {
+    return ephemeralReply("That button isn't valid anymore.");
+  }
+  const value = customId.slice(TORCH_ALL_PREFIX.length);
+
+  if (value !== TORCH_ALL_CANCEL) {
+    const limit = config.rateLimits.torch;
+    if (limit && !(await checkAndIncrement(db, owner.type, owner.id, "torch", limit.windowSeconds, limit.maxCount))) {
+      return ephemeralReply(RATE_LIMIT_MESSAGE);
+    }
+  }
+
+  return { type: 7, data: { content: await resolveTorchAllClick(db, owner, value), components: [] } };
 }
 
 async function handleNew(
@@ -262,9 +294,29 @@ async function handleTorch(db: SqlExecutor, owner: OwnerRef, addressOrId: string
   if (!addressOrId) {
     return ephemeralReply("Missing address.");
   }
-  const torchAll = parseTorchAll(addressOrId);
-  if (torchAll) {
-    return ephemeralReply(await runTorchAll(db, owner, torchAll, "/torch address_or_id:all confirm"));
+  if (addressOrId === TORCH_ALL_KEYWORD) {
+    const preview = await previewTorchAll(db, owner);
+    if (preview.count === 0) {
+      return ephemeralReply(preview.text);
+    }
+    // Ephemeral like every other reply, so only the person who ran it sees
+    // the buttons. Style 4 is Discord's red "danger" button, 2 is grey.
+    return {
+      type: 4,
+      data: {
+        content: preview.text,
+        flags: EPHEMERAL,
+        components: [
+          {
+            type: 1,
+            components: [
+              { type: 2, style: 4, label: "Confirm", custom_id: `${TORCH_ALL_PREFIX}${torchAllConfirmValue(preview.count)}` },
+              { type: 2, style: 2, label: "Cancel", custom_id: `${TORCH_ALL_PREFIX}${TORCH_ALL_CANCEL}` },
+            ],
+          },
+        ],
+      },
+    };
   }
   const address = await resolveAddressIdentifier(db, owner, addressOrId);
   if (!address) {

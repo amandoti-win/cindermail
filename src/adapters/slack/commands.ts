@@ -19,8 +19,10 @@ import {
   MAX_NOTE_LENGTH,
   parseExpiry,
   resolveAddressIdentifier,
-  parseTorchAll,
-  runTorchAll,
+  previewTorchAll,
+  TORCH_ALL_CANCEL,
+  TORCH_ALL_KEYWORD,
+  torchAllConfirmValue,
 } from "../../core/commands.ts";
 
 const RATE_LIMIT_MESSAGE = "Slow down a moment, then try again.";
@@ -30,6 +32,7 @@ const RATE_LIMIT_MESSAGE = "Slow down a moment, then try again.";
 // internal command names, rate-limit keys, and config vars stay identical
 // to Discord/Telegram's.
 const COMMAND_PREFIX = "cm-";
+export const TORCH_ALL_ACTION_PREFIX = "torch_all:";
 
 export interface SlackSlashCommandPayload {
   command: string;
@@ -72,12 +75,29 @@ function parseBooleanArg(word: string): boolean | undefined {
   return undefined;
 }
 
+// A command's reply: plain text, plus Block Kit blocks when it needs buttons.
+export interface SlackReply {
+  text: string;
+  blocks?: unknown[];
+}
+
+// Plain-text view of handleSlashCommandRich, for callers that only want the
+// words. A reply with buttons still carries its prompt in `text`.
 export async function handleSlashCommand(
   payload: SlackSlashCommandPayload,
   db: SqlExecutor,
   createAddressFn: CreateAddressFn,
   config: CommandConfig
 ): Promise<string> {
+  return (await handleSlashCommandRich(payload, db, createAddressFn, config)).text;
+}
+
+export async function handleSlashCommandRich(
+  payload: SlackSlashCommandPayload,
+  db: SqlExecutor,
+  createAddressFn: CreateAddressFn,
+  config: CommandConfig
+): Promise<SlackReply> {
   const rawCommand = payload.command.replace(/^\//, "").toLowerCase();
   const command = rawCommand.startsWith(COMMAND_PREFIX) ? rawCommand.slice(COMMAND_PREFIX.length) : rawCommand;
   const remainder = payload.text.trim();
@@ -87,25 +107,27 @@ export async function handleSlashCommand(
   if (limit) {
     const allowed = await checkAndIncrement(db, owner.type, owner.id, command, limit.windowSeconds, limit.maxCount);
     if (!allowed) {
-      return RATE_LIMIT_MESSAGE;
+      return { text: RATE_LIMIT_MESSAGE };
     }
   }
 
+  const plain = async (reply: Promise<string>): Promise<SlackReply> => ({ text: await reply });
+
   switch (command) {
     case "new":
-      return handleNew(db, owner, createAddressFn, config, remainder);
+      return plain(handleNew(db, owner, createAddressFn, config, remainder));
     case "list":
-      return handleList(db, owner, config);
+      return plain(handleList(db, owner, config));
     case "note":
-      return handleNote(db, owner, remainder);
+      return plain(handleNote(db, owner, remainder));
     case "extend":
-      return handleExtend(db, owner, config, remainder);
+      return plain(handleExtend(db, owner, config, remainder));
     case "torch":
       return handleTorch(db, owner, remainder);
     case "remind":
-      return handleRemind(db, owner, remainder);
+      return plain(handleRemind(db, owner, remainder));
     default:
-      return "Unknown command.";
+      return { text: "Unknown command." };
   }
 }
 
@@ -205,24 +227,50 @@ async function handleExtend(
   return `${address} now expires in ${days} day${days === 1 ? "" : "s"}.`;
 }
 
-async function handleTorch(db: SqlExecutor, owner: OwnerRef, remainder: string): Promise<string> {
+async function handleTorch(db: SqlExecutor, owner: OwnerRef, remainder: string): Promise<SlackReply> {
   const addressOrId = remainder.trim().toLowerCase();
   if (!addressOrId) {
-    return "Usage: /cm-torch <address/id|all [confirm]>";
+    return { text: "Usage: /cm-torch <address/id|all>" };
   }
-  const torchAll = parseTorchAll(addressOrId);
-  if (torchAll) {
-    return await runTorchAll(db, owner, torchAll, "/cm-torch all confirm");
+  if (addressOrId === TORCH_ALL_KEYWORD) {
+    const preview = await previewTorchAll(db, owner);
+    if (preview.count === 0) {
+      return { text: preview.text };
+    }
+    return {
+      text: preview.text,
+      blocks: [
+        { type: "section", text: { type: "mrkdwn", text: preview.text } },
+        {
+          type: "actions",
+          elements: [
+            {
+              type: "button",
+              style: "danger",
+              text: { type: "plain_text", text: "Confirm" },
+              action_id: `${TORCH_ALL_ACTION_PREFIX}confirm`,
+              value: torchAllConfirmValue(preview.count),
+            },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "Cancel" },
+              action_id: `${TORCH_ALL_ACTION_PREFIX}cancel`,
+              value: TORCH_ALL_CANCEL,
+            },
+          ],
+        },
+      ],
+    };
   }
   const address = await resolveAddressIdentifier(db, owner, addressOrId);
   if (!address) {
-    return "Not found or not yours.";
+    return { text: "Not found or not yours." };
   }
   const updated = await revokeAddress(db, owner, address);
   if (!updated) {
-    return "Not found or not yours.";
+    return { text: "Not found or not yours." };
   }
-  return `Torched ${address}.`;
+  return { text: `Torched ${address}.` };
 }
 
 async function handleRemind(db: SqlExecutor, owner: OwnerRef, remainder: string): Promise<string> {

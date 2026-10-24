@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildCommandConfig } from "../src/core/config.ts";
-import { handleSlashCommand } from "../src/adapters/slack/commands.ts";
+import { handleSlashCommand, handleSlashCommandRich } from "../src/adapters/slack/commands.ts";
 import { createAddress, getAddress } from "../src/core/db.ts";
 import type { SqlExecutor } from "../src/core/storage.ts";
 import type { OwnerRef } from "../src/core/types.ts";
@@ -93,11 +93,19 @@ test("/cm-torch all", async () => {
   const { db } = testDb();
   await createAddress(db, { type: "slack", id: "s" }, "ex.com", 86400, false, null);
 
-  const preview = await run(db, "s", "/cm-torch", "all");
-  assert.match(preview, /This will torch all 1 address and can't be undone/);
-  assert.match(preview, /\/cm-torch all confirm/);
-  assert.match(await run(db, "s", "/cm-list"), /^1\//);
+  const reply = await handleSlashCommandRich(slackPayload("s", "/cm-torch", "all"), db, createFn, config);
+  assert.equal(reply.text, "This will torch all 1 address and can't be undone.");
+  const actions = (reply.blocks?.[1] as { elements: { action_id: string; value: string }[] }).elements;
+  assert.deepEqual(
+    actions.map((a) => [a.action_id, a.value]),
+    [
+      ["torch_all:confirm", "confirm:1"],
+      ["torch_all:cancel", "cancel"],
+    ]
+  );
+  assert.match(await run(db, "s", "/cm-list"), /^1\//, "the preview deletes nothing");
 
-  assert.equal(await run(db, "s", "/cm-torch", "all confirm"), "Torched all 1 address.");
-  assert.equal(await run(db, "s", "/cm-torch", "all confirm"), "You have no active addresses to torch.");
+  const empty = await handleSlashCommandRich(slackPayload("nobody", "/cm-torch", "all"), db, createFn, config);
+  assert.equal(empty.text, "You have no active addresses to torch.");
+  assert.equal(empty.blocks, undefined);
 });

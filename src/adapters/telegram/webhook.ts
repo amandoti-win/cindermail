@@ -2,8 +2,8 @@ import { createAddress } from "../../core/db.ts";
 import { buildCommandConfig } from "../../core/config.ts";
 import type { SqlExecutor } from "../../core/storage.ts";
 import { createMailtmAddress } from "../../receivers/mailtm/address.ts";
-import { sendMessage } from "./telegram-rest.ts";
-import { handleUpdate, type TelegramUpdate } from "./commands.ts";
+import { answerCallbackQuery, editMessageText, sendMessage } from "./telegram-rest.ts";
+import { handleCallbackQuery, handleUpdate, type TelegramUpdate } from "./commands.ts";
 
 export interface TelegramWebhookEnv {
   DISPOSABLE_DOMAIN?: string;
@@ -78,6 +78,21 @@ export async function handleTelegramWebhookRequest(
       ) => createAddress(executor, owner, domain as string, ttl, permanent, note)
     : createMailtmAddress;
 
+  // Button taps arrive as their own update type, handled apart from commands.
+  // Same rule as below: nothing here may escape as a non-2xx.
+  if (update.callback_query) {
+    try {
+      const result = await handleCallbackQuery(update, db, config);
+      if (result) {
+        await answerCallbackQuery(env.TELEGRAM_BOT_TOKEN, result.callbackId);
+        await editMessageText(env.TELEGRAM_BOT_TOKEN, result.chatId, result.messageId, result.text);
+      }
+    } catch (err) {
+      console.error(`telegram button failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    return new Response("ok");
+  }
+
   // Anything non-2xx makes Telegram redeliver the update, which would re-run
   // a command whose side effects (rate-limit row, new address, mail.tm
   // account, torch) are already committed. So neither a failed handler nor a
@@ -94,7 +109,7 @@ export async function handleTelegramWebhookRequest(
   }
   if (reply) {
     try {
-      await sendMessage(env.TELEGRAM_BOT_TOKEN, reply.chatId, reply.text);
+      await sendMessage(env.TELEGRAM_BOT_TOKEN, reply.chatId, reply.text, reply.buttons);
     } catch (err) {
       console.warn(`telegram reply not delivered: ${err instanceof Error ? err.message : String(err)}`);
     }
