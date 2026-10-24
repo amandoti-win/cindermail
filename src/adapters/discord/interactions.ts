@@ -179,8 +179,8 @@ async function handleNew(
   const address = await createAddressFn(db, owner, expiry.ttlSeconds, expiry.permanent, trimmedNote);
   const label = trimmedNote ? ` (${trimmedNote})` : "";
   const shortId = (await getAddress(db, address))?.short_id;
-  const idLine = shortId ? `ID: #${shortId}\n` : "";
-  return ephemeralReply(`Your new disposable address: \`${address}\`${label}\n${idLine}${describeExpiry(expiry)}`);
+  const id = shortId ? `#${shortId} ` : "";
+  return ephemeralReply(`Your new disposable address: ${id}\`${address}\`${label}\n${describeExpiry(expiry)}`);
 }
 
 async function handleNote(db: SqlExecutor, owner: OwnerRef, addressOrId: string | undefined, note: string) {

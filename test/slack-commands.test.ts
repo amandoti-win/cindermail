@@ -20,7 +20,7 @@ const freshUser = () => `U${100000 + seq++}`;
 // The address a reply embeds, same "address: <addr>" shape Telegram's plain
 // text replies use, since both hand back a bare string rather than a
 // wrapped object.
-const replyAddress = (reply: string): string => (reply.match(/address: (\S+)/) ?? [])[1] ?? "";
+const replyAddress = (reply: string): string => (reply.match(/address: (?:#\d+ )?(\S+)/) ?? [])[1] ?? "";
 
 test("strips the /cm- prefix so the same command names as Discord/Telegram apply", async () => {
   const { db } = testDb();
@@ -32,8 +32,7 @@ test("/cm-new reports the short id it just allocated", async () => {
   const { db } = testDb();
   const reply = await run(db, freshUser(), "/cm-new");
   const stored = await getAddress(db, replyAddress(reply));
-  assert.match(reply, /\nID: #\d{5}\n/);
-  assert.ok(stored?.short_id && reply.includes(`ID: #${stored.short_id}`));
+  assert.ok(stored?.short_id && reply.includes(`address: #${stored.short_id} ${stored.address}`));
 });
 
 test("an unprefixed or unknown command is rejected, not silently handled", async () => {

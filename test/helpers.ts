@@ -67,7 +67,7 @@ export const telegramReplyText = (reply: { chatId: string; text: string } | null
 // The address in a reply, plain text with no code-span wrapper to pull it
 // out of.
 export const telegramReplyAddress = (reply: { chatId: string; text: string } | null): string =>
-  (telegramReplyText(reply).match(/address: (\S+)/) ?? [])[1] ?? "";
+  (telegramReplyText(reply).match(/address: (?:#\d+ )?(\S+)/) ?? [])[1] ?? "";
 
 export const slackOwner = (id: string): OwnerRef => ({ type: "slack", id });
 
