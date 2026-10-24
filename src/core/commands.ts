@@ -1,4 +1,4 @@
-import { getAddressByShortId } from "./db.ts";
+import { countActiveAddresses, getAddressByShortId, revokeAllAddresses } from "./db.ts";
 import type { SqlExecutor } from "./storage.ts";
 import type { OwnerRef } from "./types.ts";
 
@@ -84,4 +84,35 @@ export function describeTorchAll(count: number): string {
     return "You have no active addresses to torch.";
   }
   return `Torched all ${count} address${count === 1 ? "" : "es"}.`;
+}
+
+export type TorchAllStep = "preview" | "confirmed";
+
+// `all` alone only previews; it takes the exact second word `confirm` to act,
+// so a stray "all", a typo, or "all confirmed" can never wipe anything.
+// Stateless on purpose: nothing to store or expire between the two messages.
+export function parseTorchAll(input: string): TorchAllStep | null {
+  const [first, second, ...rest] = input.trim().toLowerCase().split(/\s+/);
+  if (first !== TORCH_ALL_KEYWORD) {
+    return null;
+  }
+  return second === "confirm" && rest.length === 0 ? "confirmed" : "preview";
+}
+
+// confirmCommand is the exact text to send next, in whichever syntax the
+// calling platform uses.
+export async function runTorchAll(
+  db: SqlExecutor,
+  owner: OwnerRef,
+  step: TorchAllStep,
+  confirmCommand: string
+): Promise<string> {
+  if (step === "confirmed") {
+    return describeTorchAll(await revokeAllAddresses(db, owner));
+  }
+  const count = await countActiveAddresses(db, owner);
+  if (count === 0) {
+    return describeTorchAll(0);
+  }
+  return `This will torch all ${count} address${count === 1 ? "" : "es"} and can't be undone. To go ahead, send: ${confirmCommand}`;
 }

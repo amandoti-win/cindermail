@@ -5,7 +5,6 @@ import {
   getExpiryReminderPreference,
   listActiveAddresses,
   revokeAddress,
-  revokeAllAddresses,
   setAddressNote,
   setExpiryReminderPreference,
 } from "../../core/db.ts";
@@ -17,11 +16,11 @@ import {
   BAD_EXPIRY_MESSAGE,
   type CreateAddressFn,
   describeExpiry,
-  describeTorchAll,
   MAX_NOTE_LENGTH,
   parseExpiry,
   resolveAddressIdentifier,
-  TORCH_ALL_KEYWORD,
+  parseTorchAll,
+  runTorchAll,
 } from "../../core/commands.ts";
 
 const RATE_LIMIT_MESSAGE = "Slow down a moment, then try again.";
@@ -234,10 +233,11 @@ async function handleExtend(
 async function handleTorch(db: SqlExecutor, owner: OwnerRef, remainder: string): Promise<string> {
   const addressOrId = remainder.trim().toLowerCase();
   if (!addressOrId) {
-    return "Usage: /torch <address/id|all>";
+    return "Usage: /torch <address/id|all [confirm]>";
   }
-  if (addressOrId === TORCH_ALL_KEYWORD) {
-    return describeTorchAll(await revokeAllAddresses(db, owner));
+  const torchAll = parseTorchAll(addressOrId);
+  if (torchAll) {
+    return await runTorchAll(db, owner, torchAll, "/torch all confirm");
   }
   const address = await resolveAddressIdentifier(db, owner, addressOrId);
   if (!address) {

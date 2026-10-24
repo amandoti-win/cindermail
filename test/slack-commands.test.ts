@@ -92,6 +92,12 @@ test("/cm-remind on then off round-trips the preference", async () => {
 test("/cm-torch all", async () => {
   const { db } = testDb();
   await createAddress(db, { type: "slack", id: "s" }, "ex.com", 86400, false, null);
-  assert.equal(await run(db, "s", "/cm-torch", "all"), "Torched all 1 address.");
-  assert.equal(await run(db, "s", "/cm-torch", "all"), "You have no active addresses to torch.");
+
+  const preview = await run(db, "s", "/cm-torch", "all");
+  assert.match(preview, /This will torch all 1 address and can't be undone/);
+  assert.match(preview, /\/cm-torch all confirm/);
+  assert.match(await run(db, "s", "/cm-list"), /^1\//);
+
+  assert.equal(await run(db, "s", "/cm-torch", "all confirm"), "Torched all 1 address.");
+  assert.equal(await run(db, "s", "/cm-torch", "all confirm"), "You have no active addresses to torch.");
 });

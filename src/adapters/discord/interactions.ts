@@ -5,7 +5,6 @@ import {
   getExpiryReminderPreference,
   listActiveAddresses,
   revokeAddress,
-  revokeAllAddresses,
   setAddressNote,
   setExpiryReminderPreference,
 } from "../../core/db.ts";
@@ -17,12 +16,12 @@ import {
   BAD_EXPIRY_MESSAGE,
   type CreateAddressFn,
   describeExpiry,
-  describeTorchAll,
   MAX_EXPIRY_DAYS,
   MAX_NOTE_LENGTH,
   parseExpiry,
   resolveAddressIdentifier,
-  TORCH_ALL_KEYWORD,
+  parseTorchAll,
+  runTorchAll,
 } from "../../core/commands.ts";
 
 export type { CreateAddressFn } from "../../core/commands.ts";
@@ -263,8 +262,9 @@ async function handleTorch(db: SqlExecutor, owner: OwnerRef, addressOrId: string
   if (!addressOrId) {
     return ephemeralReply("Missing address.");
   }
-  if (addressOrId === TORCH_ALL_KEYWORD) {
-    return ephemeralReply(describeTorchAll(await revokeAllAddresses(db, owner)));
+  const torchAll = parseTorchAll(addressOrId);
+  if (torchAll) {
+    return ephemeralReply(await runTorchAll(db, owner, torchAll, "/torch address_or_id:all confirm"));
   }
   const address = await resolveAddressIdentifier(db, owner, addressOrId);
   if (!address) {

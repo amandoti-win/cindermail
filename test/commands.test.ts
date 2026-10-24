@@ -238,25 +238,42 @@ test("unknown commands are rejected", async () => {
 });
 
 test("/torch all", async (t) => {
-  await t.test("torches every live address for the caller only", async () => {
+  const setup = async () => {
     const { db } = testDb();
     await createAddress(db, owner("n"), "ex.com", DAY, false, null);
     await createAddress(db, owner("n"), "ex.com", DAY, true, null);
     await createAddress(db, owner("other"), "ex.com", DAY, false, null);
+    return db;
+  };
+  const torch = (db: SqlExecutor, user: string, value: string) =>
+    run(db, user, "torch", [{ name: "address_or_id", value }]);
 
-    assert.equal(
-      replyText(await run(db, "n", "torch", [{ name: "address_or_id", value: " ALL " }])),
-      "Torched all 2 addresses."
-    );
+  await t.test("all alone only previews and deletes nothing", async () => {
+    const db = await setup();
+    const reply = replyText(await torch(db, "n", " ALL "));
+    assert.match(reply, /This will torch all 2 addresses and can't be undone/);
+    assert.match(reply, /\/torch address_or_id:all confirm/);
+    assert.match(replyText(await run(db, "n", "list")), /^2\//);
+  });
+
+  await t.test("all confirm torches every live address for the caller only", async () => {
+    const db = await setup();
+    assert.equal(replyText(await torch(db, "n", "all confirm")), "Torched all 2 addresses.");
     assert.match(replyText(await run(db, "n", "list")), /^0\//);
     assert.match(replyText(await run(db, "other", "list")), /^1\//);
   });
 
-  await t.test("says so when there is nothing to torch", async () => {
+  await t.test("anything other than the exact word confirm stays a preview", async () => {
+    const db = await setup();
+    for (const value of ["all confirmed", "all yes", "all confirm now", "all  confirm?"]) {
+      assert.match(replyText(await torch(db, "n", value)), /This will torch/, value);
+    }
+    assert.match(replyText(await run(db, "n", "list")), /^2\//);
+  });
+
+  await t.test("says so when there is nothing to torch, with or without confirm", async () => {
     const { db } = testDb();
-    assert.equal(
-      replyText(await run(db, "n", "torch", [{ name: "address_or_id", value: "all" }])),
-      "You have no active addresses to torch."
-    );
+    assert.equal(replyText(await torch(db, "n", "all")), "You have no active addresses to torch.");
+    assert.equal(replyText(await torch(db, "n", "all confirm")), "You have no active addresses to torch.");
   });
 });

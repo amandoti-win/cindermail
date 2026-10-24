@@ -143,6 +143,13 @@ test("/torch all", async () => {
   const { db } = testDb();
   await createAddress(db, telegramOwner("7"), "ex.com", 86400, false, null);
   await createAddress(db, telegramOwner("7"), "ex.com", 86400, true, null);
-  assert.equal(telegramReplyText(await run(db, "7", "/torch all")), "Torched all 2 addresses.");
-  assert.equal(telegramReplyText(await run(db, "7", "/torch ALL")), "You have no active addresses to torch.");
+
+  const preview = telegramReplyText(await run(db, "7", "/torch all"));
+  assert.match(preview, /This will torch all 2 addresses and can't be undone/);
+  assert.match(preview, /\/torch all confirm/);
+  assert.match(telegramReplyText(await run(db, "7", "/torch ALL confirmed")), /This will torch/);
+  assert.match(telegramReplyText(await run(db, "7", "/list")), /^2\//);
+
+  assert.equal(telegramReplyText(await run(db, "7", "/torch all confirm")), "Torched all 2 addresses.");
+  assert.equal(telegramReplyText(await run(db, "7", "/torch all confirm")), "You have no active addresses to torch.");
 });
