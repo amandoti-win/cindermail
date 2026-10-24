@@ -1,5 +1,6 @@
 import {
   countActiveAddresses,
+  getAddress,
   extendAddress,
   getExpiryReminderPreference,
   listActiveAddresses,
@@ -155,7 +156,9 @@ async function handleNew(
   const trimmedNote = note.trim().slice(0, MAX_NOTE_LENGTH) || null;
   const address = await createAddressFn(db, owner, expiry.ttlSeconds, expiry.permanent, trimmedNote);
   const label = trimmedNote ? ` (${trimmedNote})` : "";
-  return `Your new disposable address: ${address}${label}\n${describeExpiry(expiry)}`;
+  const shortId = (await getAddress(db, address))?.short_id;
+  const idLine = shortId ? `ID: #${shortId}\n` : "";
+  return `Your new disposable address: ${address}${label}\n${idLine}${describeExpiry(expiry)}`;
 }
 
 async function handleList(db: SqlExecutor, owner: OwnerRef, config: CommandConfig): Promise<string> {

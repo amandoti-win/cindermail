@@ -28,6 +28,14 @@ test("strips the /cm- prefix so the same command names as Discord/Telegram apply
   assert.match(reply, /Your new disposable address/);
 });
 
+test("/cm-new reports the short id it just allocated", async () => {
+  const { db } = testDb();
+  const reply = await run(db, freshUser(), "/cm-new");
+  const stored = await getAddress(db, replyAddress(reply));
+  assert.match(reply, /\nID: #\d{5}\n/);
+  assert.ok(stored?.short_id && reply.includes(`ID: #${stored.short_id}`));
+});
+
 test("an unprefixed or unknown command is rejected, not silently handled", async () => {
   const { db } = testDb();
   const reply = await run(db, freshUser(), "/cm-bogus");
